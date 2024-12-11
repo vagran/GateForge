@@ -1,0 +1,44 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run master node",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["-m", "MasterNode.Main", "--config", "master_node_config.yaml"],
+            "options": {
+                "cwd": "${workspaceFolder}/workspace/master_node",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src",
+                    "PYTHONUNBUFFERED": "1"
+                }
+            }
+        },
+        {
+            "label": "Run unit tests",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["-m", "unittest", "discover", "-t", "${workspaceFolder}",
+                     "-s", "${workspaceFolder}/test"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src",
+                    "PYTHONUNBUFFERED": "1"
+                }
+            }
+        },
+        {
+            "label": "Run single unit test",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["-m", "unittest", "test.test_expressions.Const.test_basic"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src",
+                    "PYTHONUNBUFFERED": "1"
+                }
+            }
+        },
+    ]
+}

@@ -1,0 +1,2 @@
+#XXX
+print("in main")
