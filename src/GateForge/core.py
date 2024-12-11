@@ -1,3 +1,4 @@
+import threading
 from typing import List, Optional, Tuple
 import traceback
 import re
@@ -9,6 +10,7 @@ class ParseException(Exception):
 
 
 class RenderCtx:
+    #XXX
     pass
 
 
@@ -16,28 +18,38 @@ class CompileCtx:
 
     lastFrame: Optional[traceback.FrameSummary] = None
 
+    _threadLocal = threading.local()
+
+    @staticmethod
+    def _GetCurrent() -> Optional["CompileCtx"]:
+        return getattr(CompileCtx._threadLocal, "_current", None)
+
+
+    @staticmethod
+    def _SetCurrent(value: Optional["CompileCtx"]):
+        CompileCtx._threadLocal._current = value
+
+
     @staticmethod
     def Current() -> "CompileCtx":
-        global _curCompileCtx
-        if _curCompileCtx is None:
+        cur = CompileCtx._GetCurrent()
+        if cur is None:
             raise Exception("Synthesizable functions are not allowed to be called outside the compiler")
-        return _curCompileCtx
+        return cur
 
 
     @staticmethod
     def Open(ctx: "CompileCtx"):
-        global _curCompileCtx
-        if _curCompileCtx is not None:
+        if CompileCtx._GetCurrent() is not None:
             raise Exception("Compilation context override")
-        _curCompileCtx = ctx
+        CompileCtx._SetCurrent(ctx)
 
 
     @staticmethod
     def Close():
-        global _curCompileCtx
-        if _curCompileCtx is None:
+        if CompileCtx._GetCurrent() is None:
             raise Exception("Compilation context not open")
-        _curCompileCtx = None
+        CompileCtx._SetCurrent(None)
 
 
     def Warning(self, msg: str, frame: Optional[traceback.FrameSummary] = None):
@@ -50,8 +62,6 @@ class CompileCtx:
         else:
             print(f"WARN {msg}")
 
-
-_curCompileCtx: Optional[CompileCtx] = None
 
 
 class RenderResult:
@@ -181,12 +191,56 @@ class Const(Expression):
         return value, size
 
 
-
-class ConcatExpr(Expression):
-
+class Net(Expression):
+    #XXX
     pass
 
 
-class Net(Expression):
+class ConcatExpr(Expression):
+    #XXX
+    pass
 
+
+class SliceExpr(Expression):
+    #XXX
+    pass
+
+
+class ArithmeticExpr(Expression):
+    #XXX
+    pass
+
+
+class ConditionalExpr(Expression):
+    #XXX
+    pass
+
+
+class Statement(SyntaxNode):
+    #XXX
+    pass
+
+
+class Block(SyntaxNode):
+    #XXX
+    pass
+
+
+class AssignmentStatement(Statement):
+    #XXX
+    pass
+
+
+class IfStatement(Statement):
+    #XXX
+    pass
+
+
+class CaseStatement(Statement):
+    #XXX
+    pass
+
+
+class ProceduralBlock(Statement):
+    #XXX
     pass
