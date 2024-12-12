@@ -2,6 +2,7 @@ import unittest
 
 from GateForge.core import CompileCtx, Expression, ModuleCtx, ParseException, RenderCtx
 from GateForge.dsl import const, reg, wire
+from pathlib import Path
 
 
 class TestBase(unittest.TestCase):
@@ -19,6 +20,8 @@ class TestBase(unittest.TestCase):
 
 
     def CheckExpr(self, expr: Expression, expected: str):
+        # Check source is in current file
+        self.assertEqual(Path(expr.srcFrame.filename).name, "test_expressions.py")
         self.assertEqual(str(expr.Render(self.ctx)), expected)
 
 
@@ -44,6 +47,9 @@ class Const(TestBase):
 
         with self.assertRaises(ParseException):
             const("5'b12")
+
+        # Size trimming, warning expected
+        self.CheckExpr(const("5'hffff"), "5'h1f")
 
 
 class Net(TestBase):
@@ -74,9 +80,42 @@ class Net(TestBase):
             reg(-1)
 
 
-# constant slice
+class Slice(TestBase):
 
-# constant concat
+    def test_basic(self):
+        self.CheckExpr(wire(8, "a")[0], "a[0]")
+        self.CheckExpr(wire(8, "b")[3], "b[3]")
+        self.CheckExpr(wire(8, "c")[5:2], "c[5:2]")
+        self.CheckExpr(wire((15, 8), "d")[8], "d[8]")
+        self.CheckExpr(wire((15, 8), "e")[15:8], "e[15:8]")
+
+        # Slice of slice optimization
+        self.CheckExpr(wire((15, 8), "f")[11:8][2:1], "f[10:9]")
+        self.CheckExpr(wire((15, 8), "g")[11:8][2:1][1], "g[10]")
+
+        # Slice of constant optimization
+        self.CheckExpr(const(0xde)[7:4], "4'hd")
+        self.CheckExpr(const(0xde)[7:4][0], "1'h1")
+        self.CheckExpr(const(0xde)[15:8], "8'h0")
+
+        with self.assertRaises(ParseException):
+            wire((15, 8))[0]
+        with self.assertRaises(ParseException):
+            wire((15, 8))[7]
+        with self.assertRaises(ParseException):
+            wire((15, 8))[16]
+        with self.assertRaises(ParseException):
+            wire((15, 8))[20:8]
+        with self.assertRaises(ParseException):
+            wire((15, 8))[10:8:1]
+        with self.assertRaises(ParseException):
+            wire((15, 8))["aaa"]
+
+
+# XXX constant concat
+
+# XXX constant posedge, negedge, input exception
+
 
 if __name__ == "__main__":
     unittest.main()
