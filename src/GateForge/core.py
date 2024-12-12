@@ -9,9 +9,31 @@ class ParseException(Exception):
     pass
 
 
-class RenderCtx:
-    #XXX
-    pass
+class ModuleCtx:
+    _curNetIdx: int
+    _netNames: dict[str, traceback.FrameSummary]
+
+
+    def __init__(self):
+        self._curNetIdx = 0
+        self._netNames = dict()
+
+
+    def GenerateNetName(self, isReg: bool) -> str:
+        while True:
+            idx = self._curNetIdx
+            self._curNetIdx += 1
+            name = f"{'r' if isReg else 'w'}_{idx}"
+            if name in self._netNames:
+                continue
+            return name
+
+
+    def RegisterNetName(self, name: str, frame: traceback.FrameSummary):
+        f = self._netNames.get(name, None)
+        if f is not None:
+            raise ParseException(f"Net with name `{name}` already declared at {f.filename}:{f.lineno}")
+        self._netNames[name] = frame
 
 
 class CompileCtx:
@@ -19,6 +41,12 @@ class CompileCtx:
     lastFrame: Optional[traceback.FrameSummary] = None
 
     _threadLocal = threading.local()
+    _moduleStack: List[ModuleCtx]
+
+
+    def __init__(self):
+        self._moduleStack = []
+
 
     @staticmethod
     def _GetCurrent() -> Optional["CompileCtx"]:
@@ -52,6 +80,28 @@ class CompileCtx:
         CompileCtx._SetCurrent(None)
 
 
+    @staticmethod
+    def EnsureContext():
+        CompileCtx.Current().ModuleCtx
+
+
+    @property
+    def ModuleCtx(self) -> ModuleCtx:
+        if len(self._moduleStack) == 0:
+            raise Exception("No module context")
+        return self._moduleStack[-1]
+
+
+    def OpenModule(self, ctx: ModuleCtx):
+        self._moduleStack.append(ctx)
+
+
+    def CloseModule(self):
+        if len(self._moduleStack) == 0:
+            raise Exception("Module stack underflow")
+        self._moduleStack.pop()
+
+
     def Warning(self, msg: str, frame: Optional[traceback.FrameSummary] = None):
         #XXX
         if frame is None:
@@ -62,6 +112,12 @@ class CompileCtx:
         else:
             print(f"WARN {msg}")
 
+
+class RenderCtx:
+    # Render declaration instead of expression when True
+    renderDecl: bool = False
+
+    #XXX
 
 
 class RenderResult:
@@ -86,12 +142,19 @@ class SyntaxNode:
     # Stack frame of the Python source code for this node
     srcFrame: Optional[traceback.FrameSummary] = None
 
-    def __init__(self, frameDepth=0):
-        # Raise exception if not context
+    def __init__(self, frameDepth: int):
+        # Raise exception if no context
         ctx = CompileCtx.Current()
+        # Ensure module
+        ctx.ModuleCtx
         if frameDepth is not None:
-            self.srcFrame = traceback.extract_stack()[-frameDepth - 2]
+            self.srcFrame = self.GetFrame(frameDepth + 1)
             ctx.lastFrame = self.srcFrame
+
+
+    def GetFrame(self, frameDepth: int):
+        return traceback.extract_stack()[-frameDepth - 2]
+
 
     def Render(self, ctx: RenderCtx) -> RenderResult:
         raise NotImplementedError()
@@ -111,7 +174,7 @@ class Const(Expression):
     _valuePat = re.compile(r"(?:(\d+)?'([bdoh]))?([\da-f_]+)", re.RegexFlag.IGNORECASE)
 
 
-    def __init__(self, value: str | int, size: Optional[int] = None, *, frameDepth=0):
+    def __init__(self, value: str | int, size: Optional[int] = None, *, frameDepth: int):
         super().__init__(frameDepth + 1)
 
         if isinstance(value, str):
@@ -192,8 +255,47 @@ class Const(Expression):
 
 
 class Net(Expression):
-    #XXX
-    pass
+    isLhs = True
+    baseIndex: int = 0
+    isReg: bool
+    name: str
+
+
+    def __init__(self, *, size: int, baseIndex: Optional[int], isReg: bool, name: Optional[str],
+                 frameDepth: int):
+        super().__init__(frameDepth + 1)
+        if size <= 0:
+            raise ParseException(f"Net size should be positive, have {size}")
+        self.size = size
+        if baseIndex is not None:
+            if baseIndex < 0:
+                raise ParseException(f"Net base index cannot be negative, have {baseIndex}")
+            self.baseIndex = baseIndex
+        self.isReg = isReg
+
+        modCtx = CompileCtx.Current().ModuleCtx
+        if name is None:
+            name = modCtx.GenerateNetName(isReg)
+        modCtx.RegisterNetName(name, self.GetFrame(frameDepth + 1))
+        self.name = name
+
+
+    def Render(self, ctx: RenderCtx) -> RenderResult:
+        if ctx.renderDecl:
+            s = "reg" if self.isReg else "wire"
+            if self.baseIndex != 0 or self.size > 1:
+                s += f"[{self.baseIndex + self.size - 1}:{self.baseIndex}]"
+            s += f" {self.name};"
+            return RenderResult(s)
+        return RenderResult(self.name)
+
+
+class Wire(Net):
+    isReg = False
+
+
+class Reg(Net):
+    isReg = True
 
 
 class ConcatExpr(Expression):
