@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import threading
 from typing import Iterator, List, Optional, Tuple
 import traceback
@@ -10,20 +11,37 @@ class ParseException(Exception):
     pass
 
 
+@dataclass
+class WarningMsg:
+    msg: str
+    frame: Optional[traceback.FrameSummary]
+
+
+    def __str__(self):
+        if self.frame is not None:
+            loc = f"{self.frame.filename}:{self.frame.lineno}"
+            return f"WARN [{loc}] {self.msg}"
+        return f"WARN {self.msg}"
+
+
 class CompileCtx:
 
     lastFrame: Optional[traceback.FrameSummary] = None
 
     _threadLocal = threading.local()
     _curNetIdx: int
-    _netNames: dict[str, traceback.FrameSummary]
+    _netNames: dict[str, "Net"]
     _ports: dict["Expression", "Port"]
+    _blockStack: List["Block"]
+    _warnings: List[WarningMsg]
 
 
     def __init__(self):
         self._curNetIdx = 0
         self._netNames = dict()
         self._ports = dict()
+        self._blockStack = list()
+        self._warnings = list()
 
 
     @staticmethod
@@ -45,10 +63,11 @@ class CompileCtx:
 
 
     @staticmethod
-    def Open(ctx: "CompileCtx"):
+    def Open(ctx: "CompileCtx", frameDepth: int):
         if CompileCtx._GetCurrent() is not None:
             raise Exception("Compilation context override")
         CompileCtx._SetCurrent(ctx)
+        ctx._Open(frameDepth + 1)
 
 
     @staticmethod
@@ -62,11 +81,9 @@ class CompileCtx:
         #XXX
         if frame is None:
             frame = self.lastFrame
-        if frame is not None:
-            loc = f"{frame.filename}:{frame.lineno}"
-            print(f"WARN [{loc}] {msg}")
-        else:
-            print(f"WARN {msg}")
+        wm = WarningMsg(msg, frame)
+        self._warnings.append(wm)
+        print(wm)
 
 
     def GenerateNetName(self, isReg: bool, initialName: Optional[str] = None) -> str:
@@ -88,33 +105,26 @@ class CompileCtx:
             return name
 
 
-    def RegisterNetName(self, name: str, frame: traceback.FrameSummary):
-        f = self._netNames.get(name, None)
+    def RegisterNet(self, net: "Net"):
+        f = self._netNames.get(net.name, None)
         if f is not None:
-            raise ParseException(f"Net with name `{name}` already declared at {f.filename}:{f.lineno}")
-        self._netNames[name] = frame
+            raise ParseException(f"Net with name `{net.name}` already declared at {net.fullLocation}")
+        self._netNames[net.name] = net
 
 
-    #XXX
-    # def CheckPort(self, src: "Expression", frameDepth: int) -> "Expression":
-    #     """
-    #     Check if the expression is originated from another module, create (or use existing) port if
-    #     so.
-    #     """
-    #     if isinstance(src, Const):
-    #         # Constants used directly even if passed externally.
-    #         return src
-    #     if src.moduleCtx is self:
-    #         # Originated from this module.
-    #         return src
-    #     if src.moduleCtx.compileCtx is not self.compileCtx:
-    #         raise Exception("Encountered expression from different compilation context")
-    #     port = self._ports.get(src, None)
-    #     if port is not None:
-    #         return port
-    #     port = Port(src, frameDepth + 1)
-    #     self._ports[src] = port
-    #     return port
+    def PushStatement(self, stmt: "Statement"):
+        self.curBlock.PushStatement(stmt)
+
+
+    @property
+    def curBlock(self) -> "Block":
+        if len(self._blockStack) == 0:
+            raise Exception("Block stack underflow")
+        return self._blockStack[-1]
+
+
+    def _Open(self, frameDepth: int):
+        self._blockStack.append(Block(frameDepth + 1))
 
 
 class RenderCtx:
@@ -151,7 +161,7 @@ class RenderResult:
 
 class SyntaxNode:
     # Stack frame of the Python source code for this node
-    srcFrame: Optional[traceback.FrameSummary] = None
+    srcFrame: traceback.FrameSummary
     # String value to use in diagnostic messages
     strValue: Optional[str] = None
 
@@ -162,6 +172,15 @@ class SyntaxNode:
         self.srcFrame = self.GetFrame(frameDepth + 1)
         ctx.lastFrame = self.srcFrame
 
+    @property
+    def location(self) -> str:
+        return f"{Path(self.srcFrame.filename).name}:{self.srcFrame.lineno}"
+
+
+    @property
+    def fullLocation(self) -> str:
+        return f"{self.srcFrame.filename}:{self.srcFrame.lineno}"
+
 
     def __str__(self) -> str:
         if self.strValue is None:
@@ -169,7 +188,7 @@ class SyntaxNode:
         else:
             s = self.strValue
         if self.srcFrame is not None:
-            s += f"[{Path(self.srcFrame.filename).name}:{self.srcFrame.lineno}]"
+            s += f"[{self.location}]"
         return s
 
 
@@ -216,7 +235,7 @@ class Expression(SyntaxNode):
 
     def _GetChildren(self) -> Iterator["Expression"]: # type: ignore
         "Should iterate child expression nodes"
-        pass
+        yield from ()
 
 
     def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
@@ -228,12 +247,20 @@ class Expression(SyntaxNode):
             child._Wire(isLhs, frameDepth + 1)
         if isLhs and not self.isLhs:
             #XXX provide definition frames
-            raise ParseException("Attempting to wire RHS expression as LHS")
+            raise ParseException("Attempting to wire RHS expression as LHS, assignment target cannot be written to")
         if self.isWired:
             return False
         self.isWired = True
         self.wiringFrame = self.GetFrame(frameDepth + 1)
         return True
+
+
+    def __ilshift__(self, rhs: "Expression | int"):
+        AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
+
+
+    def __ifloordiv__(self, rhs: "Expression | int"):
+        AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
 
 
 class Const(Expression):
@@ -344,6 +371,8 @@ class Net(Expression):
     # Actual name is resolved when wired
     name: str
 
+    _identPat = re.compile(r"[a-z_][a-z_$\d]*", re.RegexFlag.IGNORECASE)
+
 
     def __init__(self, *, size: int, baseIndex: Optional[int], isReg: bool, name: Optional[str],
                  frameDepth: int):
@@ -358,6 +387,7 @@ class Net(Expression):
         self.isReg = isReg
 
         if name is not None:
+            self._CheckIdentifier(name)
             self.initialName = name
             #XXX
             # name = modCtx.GenerateNetName(isReg)
@@ -391,7 +421,7 @@ class Net(Expression):
             return False
         ctx = CompileCtx.Current()
         self.name = ctx.GenerateNetName(self.isReg, self.initialName)
-        ctx.RegisterNetName(self.name, self.wiringFrame)
+        ctx.RegisterNet(self)
         return True
 
 
@@ -405,6 +435,11 @@ class Net(Expression):
     def output(self):
         #XXX check frameDepth for property
         return Port(self, True, 1)
+
+
+    def _CheckIdentifier(self, s: str):
+        if self._identPat.fullmatch(s) is None:
+            raise ParseException(f"Not a valid identifier: {s}")
 
 
 class Wire(Net):
@@ -432,7 +467,7 @@ class Port(Net):
     #XXX
 
     #XXX wire exact name
-    
+
 
 class ConcatExpr(Expression):
     #XXX
@@ -497,18 +532,59 @@ class ConditionalExpr(Expression):
 
 
 class Statement(SyntaxNode):
+
+    def __init__(self, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        CompileCtx.Current().PushStatement(self)
+
     #XXX
-    pass
 
 
 class Block(SyntaxNode):
+    _statements: List[Statement]
+
+
+    def __init__(self, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self._statements = list()
+
+
+    def PushStatement(self, stmt: Statement):
+        self._statements.append(stmt)
+
     #XXX
-    pass
 
 
 class AssignmentStatement(Statement):
+    lhs: Expression
+    rhs: Expression
+    isBlocking: bool
+
+    def __init__(self, lhs: Expression, rhs: Expression | int, *, isBlocking: bool, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        if isinstance(rhs, int):
+            rhs = Const(rhs, frameDepth=frameDepth + 1)
+        self.lhs = lhs
+        self.rhs= rhs
+        self.isBlocking = isBlocking
+        lhs._Wire(True, frameDepth + 1)
+        rhs._Wire(False, frameDepth + 1)
+
+        assert lhs.size is not None
+        if rhs.size is not None:
+            if rhs.size > lhs.size:
+                raise ParseException(f"Assignment size exceeded: {lhs.size} <<= {rhs.size}")
+            elif rhs.size < lhs.size:
+                CompileCtx.Current().Warning(f"Assignment of insufficient size: {lhs.size} <<= {rhs.size}",
+                                             self.srcFrame)
+
+
+    def Render(self, ctx: RenderCtx) -> RenderResult:
+        #XXX check if in procedural block
+        return RenderResult(f"assign {self.lhs.Render(ctx).Line()} = {self.rhs.Render(ctx).Line()};")
+
+
     #XXX
-    pass
 
 
 class IfStatement(Statement):

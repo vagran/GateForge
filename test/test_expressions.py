@@ -8,7 +8,7 @@ from pathlib import Path
 class TestBase(unittest.TestCase):
 
     def setUp(self):
-        CompileCtx.Open(CompileCtx())
+        CompileCtx.Open(CompileCtx(), 0)
         self.ctx = RenderCtx()
 
 
@@ -74,6 +74,13 @@ class Net(TestBase):
             reg(0)
         with self.assertRaises(ParseException):
             reg(-1)
+
+        with self.assertRaises(ParseException):
+            wire(",.")
+
+        with self.assertRaises(ParseException):
+            reg("16")
+
 
 
 class Slice(TestBase):
