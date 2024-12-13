@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from io import TextIOBase
+import io
 import threading
 from typing import Iterator, List, Optional, Tuple
 import traceback
@@ -127,36 +129,36 @@ class CompileCtx:
         self._blockStack.append(Block(frameDepth + 1))
 
 
+@dataclass
+class RenderOptions:
+    sourceMap: bool = False
+
+
 class RenderCtx:
+    options: RenderOptions = RenderOptions()
     # Render declaration instead of expression when True
     renderDecl: bool = False
 
-    #XXX
+    output: TextIOBase
 
 
-class RenderResult:
-    _strings: List[str]
+    def CreateNested(self, output: TextIOBase):
+        ctx = RenderCtx()
+        ctx.options = self.options
+        ctx.renderDecl = self.renderDecl
+        ctx.output = output
+        return ctx
 
 
-    def __init__(self, line: Optional[str]):
-        self._strings = []
-        if line is not None:
-            self._strings.append(line)
+    def RenderNested(self, node: "SyntaxNode") -> str:
+        with io.StringIO() as output:
+            ctx = self.CreateNested(output)
+            node.Render(ctx)
+            return output.getvalue()
 
 
-    def Append(self, chunk: "RenderResult"):
-        self._strings.extend(chunk._strings)
-
-
-    def Line(self) -> str:
-        """Assume single line"""
-        if len(self._strings) != 1:
-            raise Exception("Expected single line render result")
-        return self._strings[0]
-
-
-    def __str__(self):
-        return "\n".join(self._strings)
+    def Write(self, s: str):
+        self.output.write(s)
 
 
 class SyntaxNode:
@@ -196,7 +198,7 @@ class SyntaxNode:
         return traceback.extract_stack()[-frameDepth - 2]
 
 
-    def Render(self, ctx: RenderCtx) -> RenderResult:
+    def Render(self, ctx: RenderCtx):
         raise NotImplementedError()
 
 
@@ -304,8 +306,8 @@ class Const(Expression):
         return Const((self.value >> index) & mask, size, frameDepth=1)
 
 
-    def Render(self, ctx: RenderCtx) -> RenderResult:
-        return RenderResult(f"{'' if self.size is None else self.size}'h{self.value:x}")
+    def Render(self, ctx: RenderCtx):
+        ctx.Write(f"{'' if self.size is None else self.size}'h{self.value:x}")
 
 
     @staticmethod
@@ -389,9 +391,6 @@ class Net(Expression):
         if name is not None:
             self._CheckIdentifier(name)
             self.initialName = name
-            #XXX
-            # name = modCtx.GenerateNetName(isReg)
-        # modCtx.RegisterNetName(name, self.GetFrame(frameDepth + 1))
 
 
     def __getitem__(self, s):
@@ -402,7 +401,7 @@ class Net(Expression):
         return SliceExpr(self, index - self.baseIndex, size, 1)
 
 
-    def Render(self, ctx: RenderCtx) -> RenderResult:
+    def Render(self, ctx: RenderCtx):
         name = self.name if self.isWired else self.initialName
         if name is None:
             raise Exception("Cannot render unwired unnamed net")
@@ -412,8 +411,9 @@ class Net(Expression):
             if self.baseIndex != 0 or self.size > 1:
                 s += f"[{self.baseIndex + self.size - 1}:{self.baseIndex}]"
             s += f" {name};"
-            return RenderResult(s)
-        return RenderResult(name)
+            ctx.Write(s)
+        else:
+            ctx.Write(name)
 
 
     def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
@@ -508,7 +508,7 @@ class SliceExpr(Expression):
         yield self.src
 
 
-    def Render(self, ctx: RenderCtx) -> RenderResult:
+    def Render(self, ctx: RenderCtx):
         index = self.index
         assert self.size is not None
         size = self.size
@@ -518,7 +518,7 @@ class SliceExpr(Expression):
             s = str(index)
         else:
             s = f"{index + size - 1}:{index}"
-        return RenderResult(f"{self.src.Render(ctx).Line()}[{s}]")
+        ctx.Write(f"{ctx.RenderNested(self.src)}[{s}]")
 
 
 class ArithmeticExpr(Expression):
@@ -579,9 +579,9 @@ class AssignmentStatement(Statement):
                                              self.srcFrame)
 
 
-    def Render(self, ctx: RenderCtx) -> RenderResult:
+    def Render(self, ctx: RenderCtx):
         #XXX check if in procedural block
-        return RenderResult(f"assign {self.lhs.Render(ctx).Line()} = {self.rhs.Render(ctx).Line()};")
+        ctx.Write(f"assign {ctx.RenderNested(self.lhs)} = {ctx.RenderNested(self.rhs)};")
 
 
     #XXX

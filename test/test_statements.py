@@ -21,7 +21,7 @@ class TestBase(unittest.TestCase):
         stmt = self.compileCtx.curBlock._statements[-1]
         # Check source is in current file
         self.assertEqual(Path(stmt.srcFrame.filename).name, "test_statements.py")
-        self.assertEqual(str(stmt.Render(self.ctx)), expected)
+        self.assertEqual(self.ctx.RenderNested(stmt), expected)
         self.assertEqual(len(self.compileCtx._warnings), expectedWarnings)
 
 
