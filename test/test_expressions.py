@@ -1,6 +1,6 @@
 import unittest
 
-from GateForge.core import CompileCtx, Expression, ModuleCtx, ParseException, RenderCtx
+from GateForge.core import CompileCtx, Expression, ParseException, RenderCtx
 from GateForge.dsl import const, reg, wire
 from pathlib import Path
 
@@ -8,14 +8,11 @@ from pathlib import Path
 class TestBase(unittest.TestCase):
 
     def setUp(self):
-        ctx = CompileCtx()
-        CompileCtx.Open(ctx)
-        ctx.OpenModule(ModuleCtx())
+        CompileCtx.Open(CompileCtx())
         self.ctx = RenderCtx()
 
 
     def tearDown(self):
-        CompileCtx.Current().CloseModule()
         CompileCtx.Close()
 
 
@@ -55,22 +52,21 @@ class Const(TestBase):
 class Net(TestBase):
 
     def test_basic(self):
-        w = wire()
-        self.CheckExpr(w, "w_0")
-        r = reg()
-        self.CheckExpr(r, "r_1")
+        w = wire("w")
+        self.CheckExpr(w, "w")
+        r = reg("r")
+        self.CheckExpr(r, "r")
         self.ctx.renderDecl = True
-        self.CheckExpr(w, "wire w_0;")
-        self.CheckExpr(r, "reg r_1;")
+        self.CheckExpr(w, "wire w;")
+        self.CheckExpr(r, "reg r;")
 
         self.CheckExpr(wire(2, "w"), "wire[1:0] w;")
-        # Duplicated name
-        with self.assertRaises(ParseException):
-            wire("w")
 
-        self.CheckExpr(wire([3, 1], "a"), "wire[3:1] a;")
-        self.CheckExpr(reg((5, 0), "b"), "reg[5:0] b;")
-        self.CheckExpr(reg((1, 1), "c"), "reg[1:1] c;")
+        self.CheckExpr(wire([3, 1], "w"), "wire[3:1] w;")
+        self.CheckExpr(reg((5, 0), "w"), "reg[5:0] w;")
+        self.CheckExpr(reg((1, 1), "w"), "reg[1:1] w;")
+
+        #XXX non-identifier error
 
         with self.assertRaises(ParseException):
             reg((1,2))
@@ -83,15 +79,15 @@ class Net(TestBase):
 class Slice(TestBase):
 
     def test_basic(self):
-        self.CheckExpr(wire(8, "a")[0], "a[0]")
-        self.CheckExpr(wire(8, "b")[3], "b[3]")
-        self.CheckExpr(wire(8, "c")[5:2], "c[5:2]")
-        self.CheckExpr(wire((15, 8), "d")[8], "d[8]")
-        self.CheckExpr(wire((15, 8), "e")[15:8], "e[15:8]")
+        self.CheckExpr(wire(8, "w")[0], "w[0]")
+        self.CheckExpr(wire(8, "w")[3], "w[3]")
+        self.CheckExpr(wire(8, "w")[5:2], "w[5:2]")
+        self.CheckExpr(wire((15, 8), "w")[8], "w[8]")
+        self.CheckExpr(wire((15, 8), "w")[15:8], "w[15:8]")
 
         # Slice of slice optimization
-        self.CheckExpr(wire((15, 8), "f")[11:8][2:1], "f[10:9]")
-        self.CheckExpr(wire((15, 8), "g")[11:8][2:1][1], "g[10]")
+        self.CheckExpr(wire((15, 8), "w")[11:8][2:1], "w[10:9]")
+        self.CheckExpr(wire((15, 8), "w")[11:8][2:1][1], "w[10]")
 
         # Slice of constant optimization
         self.CheckExpr(const(0xde)[7:4], "4'hd")

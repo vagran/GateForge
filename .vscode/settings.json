@@ -4,6 +4,7 @@
         "negedge",
         "posedge",
         "Synthesizable",
+        "Unwired",
         "Verilog"
     ]
 }

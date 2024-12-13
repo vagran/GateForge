@@ -1,5 +1,5 @@
 import threading
-from typing import List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 import traceback
 import re
 import math
@@ -10,68 +10,20 @@ class ParseException(Exception):
     pass
 
 
-class ModuleCtx:
+class CompileCtx:
+
+    lastFrame: Optional[traceback.FrameSummary] = None
+
+    _threadLocal = threading.local()
     _curNetIdx: int
     _netNames: dict[str, traceback.FrameSummary]
     _ports: dict["Expression", "Port"]
-
-    compileCtx: "CompileCtx"
 
 
     def __init__(self):
         self._curNetIdx = 0
         self._netNames = dict()
         self._ports = dict()
-
-
-    def GenerateNetName(self, isReg: bool) -> str:
-        while True:
-            idx = self._curNetIdx
-            self._curNetIdx += 1
-            name = f"{'r' if isReg else 'w'}_{idx}"
-            if name in self._netNames:
-                continue
-            return name
-
-
-    def RegisterNetName(self, name: str, frame: traceback.FrameSummary):
-        f = self._netNames.get(name, None)
-        if f is not None:
-            raise ParseException(f"Net with name `{name}` already declared at {f.filename}:{f.lineno}")
-        self._netNames[name] = frame
-
-
-    def CheckPort(self, src: "Expression", frameDepth: int) -> "Expression":
-        """
-        Check if the expression is originated from another module, create (or use existing) port if
-        so.
-        """
-        if isinstance(src, Const):
-            # Constants used directly even if passed externally.
-            return src
-        if src.moduleCtx is self:
-            # Originated from this module.
-            return src
-        if src.moduleCtx.compileCtx is not self.compileCtx:
-            raise Exception("Encountered expression from different compilation context")
-        port = self._ports.get(src, None)
-        if port is not None:
-            return port
-        port = Port(src, frameDepth + 1)
-        self._ports[src] = port
-        return port
-
-
-class CompileCtx:
-
-    lastFrame: Optional[traceback.FrameSummary] = None
-
-    _threadLocal = threading.local()
-    _moduleStack: List[ModuleCtx]
-
-
-    def __init__(self):
-        self._moduleStack = []
 
 
     @staticmethod
@@ -106,29 +58,6 @@ class CompileCtx:
         CompileCtx._SetCurrent(None)
 
 
-    @staticmethod
-    def EnsureContext():
-        CompileCtx.Current().moduleCtx
-
-
-    @property
-    def moduleCtx(self) -> ModuleCtx:
-        if len(self._moduleStack) == 0:
-            raise Exception("No module context")
-        return self._moduleStack[-1]
-
-
-    def OpenModule(self, ctx: ModuleCtx):
-        self._moduleStack.append(ctx)
-        ctx.compileCtx = self
-
-
-    def CloseModule(self):
-        if len(self._moduleStack) == 0:
-            raise Exception("Module stack underflow")
-        self._moduleStack.pop()
-
-
     def Warning(self, msg: str, frame: Optional[traceback.FrameSummary] = None):
         #XXX
         if frame is None:
@@ -138,6 +67,54 @@ class CompileCtx:
             print(f"WARN [{loc}] {msg}")
         else:
             print(f"WARN {msg}")
+
+
+    def GenerateNetName(self, isReg: bool, initialName: Optional[str] = None) -> str:
+        if initialName is not None:
+            if initialName not in self._netNames:
+                return initialName
+            namePrefix = initialName
+        elif isReg:
+            namePrefix = "r"
+        else:
+            namePrefix = "w"
+
+        while True:
+            idx = self._curNetIdx
+            self._curNetIdx += 1
+            name = f"{namePrefix}_{idx}"
+            if name in self._netNames:
+                continue
+            return name
+
+
+    def RegisterNetName(self, name: str, frame: traceback.FrameSummary):
+        f = self._netNames.get(name, None)
+        if f is not None:
+            raise ParseException(f"Net with name `{name}` already declared at {f.filename}:{f.lineno}")
+        self._netNames[name] = frame
+
+
+    #XXX
+    # def CheckPort(self, src: "Expression", frameDepth: int) -> "Expression":
+    #     """
+    #     Check if the expression is originated from another module, create (or use existing) port if
+    #     so.
+    #     """
+    #     if isinstance(src, Const):
+    #         # Constants used directly even if passed externally.
+    #         return src
+    #     if src.moduleCtx is self:
+    #         # Originated from this module.
+    #         return src
+    #     if src.moduleCtx.compileCtx is not self.compileCtx:
+    #         raise Exception("Encountered expression from different compilation context")
+    #     port = self._ports.get(src, None)
+    #     if port is not None:
+    #         return port
+    #     port = Port(src, frameDepth + 1)
+    #     self._ports[src] = port
+    #     return port
 
 
 class RenderCtx:
@@ -173,7 +150,6 @@ class RenderResult:
 
 
 class SyntaxNode:
-    moduleCtx: ModuleCtx
     # Stack frame of the Python source code for this node
     srcFrame: Optional[traceback.FrameSummary] = None
     # String value to use in diagnostic messages
@@ -183,9 +159,6 @@ class SyntaxNode:
     def __init__(self, frameDepth: int):
         # Raise exception if no context
         ctx = CompileCtx.Current()
-        self.moduleCtx = ctx.moduleCtx
-        # Ensure module
-        ctx.moduleCtx
         self.srcFrame = self.GetFrame(frameDepth + 1)
         ctx.lastFrame = self.srcFrame
 
@@ -211,6 +184,10 @@ class SyntaxNode:
 class Expression(SyntaxNode):
     size: Optional[int] = None
     isLhs: bool = False
+    # Expression is wired when used in some statement. Unwired expressions are dangling and do not
+    # affect the produced output, however, may be used, for example, to define external module ports.
+    isWired: bool = False
+    wiringFrame: traceback.FrameSummary
 
 
     def _CheckSlice(self, s: int | slice) -> Tuple[int, int]:
@@ -235,6 +212,28 @@ class Expression(SyntaxNode):
     def __getitem__(self, s):
         index, size = self._CheckSlice(s)
         return SliceExpr(self, index, size, 1)
+
+
+    def _GetChildren(self) -> Iterator["Expression"]: # type: ignore
+        "Should iterate child expression nodes"
+        pass
+
+
+    def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
+        """
+        Wire the expression.
+        :return: True if wired, false if already was wired earlier.
+        """
+        for child in self._GetChildren():
+            child._Wire(isLhs, frameDepth + 1)
+        if isLhs and not self.isLhs:
+            #XXX provide definition frames
+            raise ParseException("Attempting to wire RHS expression as LHS")
+        if self.isWired:
+            return False
+        self.isWired = True
+        self.wiringFrame = self.GetFrame(frameDepth + 1)
+        return True
 
 
 class Const(Expression):
@@ -340,6 +339,9 @@ class Net(Expression):
     isLhs = True
     baseIndex: int = 0
     isReg: bool
+    # Name specified when net is created
+    initialName: Optional[str] = None
+    # Actual name is resolved when wired
     name: str
 
 
@@ -355,11 +357,11 @@ class Net(Expression):
             self.baseIndex = baseIndex
         self.isReg = isReg
 
-        modCtx = CompileCtx.Current().moduleCtx
-        if name is None:
-            name = modCtx.GenerateNetName(isReg)
-        modCtx.RegisterNetName(name, self.GetFrame(frameDepth + 1))
-        self.name = name
+        if name is not None:
+            self.initialName = name
+            #XXX
+            # name = modCtx.GenerateNetName(isReg)
+        # modCtx.RegisterNetName(name, self.GetFrame(frameDepth + 1))
 
 
     def __getitem__(self, s):
@@ -371,14 +373,38 @@ class Net(Expression):
 
 
     def Render(self, ctx: RenderCtx) -> RenderResult:
+        name = self.name if self.isWired else self.initialName
+        if name is None:
+            raise Exception("Cannot render unwired unnamed net")
         if ctx.renderDecl:
             s = "reg" if self.isReg else "wire"
             assert self.size is not None
             if self.baseIndex != 0 or self.size > 1:
                 s += f"[{self.baseIndex + self.size - 1}:{self.baseIndex}]"
-            s += f" {self.name};"
+            s += f" {name};"
             return RenderResult(s)
-        return RenderResult(self.name)
+        return RenderResult(name)
+
+
+    def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
+        if not super()._Wire(isLhs, frameDepth):
+            return False
+        ctx = CompileCtx.Current()
+        self.name = ctx.GenerateNetName(self.isReg, self.initialName)
+        ctx.RegisterNetName(self.name, self.wiringFrame)
+        return True
+
+
+    @property
+    def input(self):
+        #XXX check frameDepth for property
+        return Port(self, False, 1)
+
+
+    @property
+    def output(self):
+        #XXX check frameDepth for property
+        return Port(self, True, 1)
 
 
 class Wire(Net):
@@ -389,26 +415,24 @@ class Reg(Net):
     isReg = True
 
 
-# Port instance is created when external expression is encountered.
 class Port(Net):
-    src: Expression
-    # Set when used as output in LHS expression
-    isOutput = False
+    src: Net
+    isOutput: bool
 
-    def __init__(self, src: Expression, frameDepth):
-        if isinstance(src, Net):
-            baseIndex = src.baseIndex
-        else:
-            baseIndex = 0
-        assert src.size is not None
-        super().__init__(size=src.size, baseIndex=baseIndex, isReg=True,
-                         name=getattr(src, "name", None), frameDepth=frameDepth + 1)
+    def __init__(self, src: Net, isOutput: bool, frameDepth: int):
+        if src.size is None:
+            raise ParseException("Port cannot be created from unsized net")
+        if src.initialName is None:
+            raise ParseException("Port cannot be created from unnamed net")
+        super().__init__(size=src.size, baseIndex=src.baseIndex, isReg=isOutput,
+                         name=src.initialName, frameDepth=frameDepth + 1)
         self.src = src
-        self.isLhs = src.isLhs
-        self.size = src.size
+        self.isLhs = isOutput
 
     #XXX
 
+    #XXX wire exact name
+    
 
 class ConcatExpr(Expression):
     #XXX
@@ -423,7 +447,7 @@ class SliceExpr(Expression):
 
     def __init__(self, src: Expression, index: int, size: int, frameDepth: int):
         super().__init__(frameDepth + 1)
-        self.src = CompileCtx.Current().moduleCtx.CheckPort(src, frameDepth + 1)
+        self.src = src
         self.isLhs = self.src.isLhs
         if self.src.size is not None:
             self._CheckRange(index, size, self.src.size)
@@ -443,6 +467,10 @@ class SliceExpr(Expression):
         index, size = self._CheckSlice(s)
         self._CheckRange(index, size, self.size)
         return SliceExpr(self.src, self.index + index, size, 1)
+
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield self.src
 
 
     def Render(self, ctx: RenderCtx) -> RenderResult:
