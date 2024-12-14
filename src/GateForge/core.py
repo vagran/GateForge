@@ -28,6 +28,7 @@ class WarningMsg:
 
 @dataclass
 class RenderOptions:
+    indent: str = "    "
     sourceMap: bool = False
 
 
@@ -86,6 +87,7 @@ def _CheckIdentifier(s: str):
 class CompileCtx:
 
     lastFrame: Optional[traceback.FrameSummary] = None
+    isProceduralBlock: bool = False
 
     _threadLocal = threading.local()
     _curNetIdx: int
@@ -188,8 +190,23 @@ class CompileCtx:
         return self._blockStack[-1]
 
 
+    def PushBlock(self, block: "Block"):
+        self._blockStack.append(block)
+
+
+    def PopBlock(self) -> "Block":
+        if len(self._blockStack) < 2:
+            raise Exception("Unexpected pop of root block")
+        return self._blockStack.pop()
+
+
+    @property
+    def indent(self) -> int:
+        return len(self._blockStack) - 1
+
+
     def _Open(self, frameDepth: int):
-        self._blockStack.append(Block(frameDepth + 1))
+        self._blockStack.append(Block(frameDepth=frameDepth + 1))
 
 
     def Render(self, output: TextIOBase, renderOptions: RenderOptions):
@@ -220,9 +237,11 @@ class CompileCtx:
         isFirst = True
         for port in sorted(self._ports.values(), key=lambda p: p.name):
             if not isFirst:
-                ctx.Write(",\n    ")
+                ctx.Write(",\n")
+                ctx.Write(ctx.options.indent)
             else:
-                ctx.Write("\n    ")
+                ctx.Write("\n")
+                ctx.Write(ctx.options.indent)
                 isFirst = False
             port.Render(ctx)
         ctx.Write(");\n")
@@ -263,11 +282,16 @@ class RenderCtx:
         self.output.write(s)
 
 
+    def WriteIndent(self, indent: int):
+        self.Write(self.options.indent * indent)
+
+
 class SyntaxNode:
     # Stack frame of the Python source code for this node
     srcFrame: traceback.FrameSummary
     # String value to use in diagnostic messages
     strValue: Optional[str] = None
+    indent: int
 
 
     def __init__(self, frameDepth: int):
@@ -275,6 +299,8 @@ class SyntaxNode:
         ctx = CompileCtx.Current()
         self.srcFrame = self.GetFrame(frameDepth + 1)
         ctx.lastFrame = self.srcFrame
+        self.indent = ctx.indent
+
 
     @property
     def location(self) -> str:
@@ -342,6 +368,15 @@ class Expression(SyntaxNode):
         yield from ()
 
 
+    def _GetLeafNodes(self) -> Iterator["Expression"]:
+        hasChildren = False
+        for child in self._GetChildren():
+            hasChildren = True
+            yield from child._GetLeafNodes()
+        if not hasChildren:
+            yield self
+
+
     def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
         """
         Wire the expression.
@@ -365,6 +400,12 @@ class Expression(SyntaxNode):
 
     def __ifloordiv__(self, rhs: "Expression | int"):
         AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
+
+
+    def __or__(self, rhs: "Expression | int | SensitivityList"):
+        if isinstance(rhs, SensitivityList):
+            return rhs._Combine(self, 1)
+        return ArithmeticExpr("|", self, rhs, 1)
 
 
 class Const(Expression):
@@ -487,6 +528,9 @@ class Net(Expression):
                 raise ParseException(f"Net base index cannot be negative, have {baseIndex}")
             self.baseIndex = baseIndex
         self.isReg = isReg
+        self.strValue = f"{'Reg' if isReg else 'Wire'}"
+        if name is not None:
+            self.strValue += f"(`{name}`)"
 
         if name is not None:
             _CheckIdentifier(name)
@@ -528,15 +572,24 @@ class Net(Expression):
 
 
     @property
-    def input(self):
-        #XXX check frameDepth for property
+    def input(self) -> "Port":
         return Port(self, False, 1)
 
 
     @property
-    def output(self):
-        #XXX check frameDepth for property
+    def output(self) -> "Port":
         return Port(self, True, 1)
+
+
+    @property
+    def posedge(self) -> "EdgeTrigger":
+        return EdgeTrigger(self, True, 1)
+
+
+    @property
+    def negedge(self) -> "EdgeTrigger":
+        return EdgeTrigger(self, False, 1)
+
 
 
 class Wire(Net):
@@ -551,6 +604,7 @@ class Port(Net):
     src: Net
     isOutput: bool
 
+
     def __init__(self, src: Net, isOutput: bool, frameDepth: int):
         if src.size is None:
             raise ParseException("Port cannot be created from unsized net")
@@ -561,7 +615,7 @@ class Port(Net):
         self.src = src
         self.isLhs = isOutput
         self.isOutput = isOutput
-        self.name = self.initialName
+        self.name = src.initialName
 
 
     # Treating source Net as absorbed so it is not enumerated as child.
@@ -629,8 +683,45 @@ class SliceExpr(Expression):
 
 
 class ArithmeticExpr(Expression):
+    op: str
+    lhs: Expression
+    rhs: Expression
+
+
+    def __init__(self, op: str, lhs: Expression, rhs: Expression | int, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.strValue = f"Op({op})"
+        self.op = op
+        self.lhs = lhs
+        if isinstance(rhs, int):
+            self.rhs = Const(rhs, frameDepth=frameDepth + 1)
+        else:
+            self.rhs = rhs
+
+
+    def _ToSensitivityList(self, frameDepth: int) -> "SensitivityList":
+        if self.op != "|":
+            raise ParseException(f"Only `|` operation allowed for sensitivity list, has `{self.op}`")
+
+        sl = SensitivityList(frameDepth + 1)
+
+        if isinstance(self.lhs, Net):
+            sl.PushSignal(self.lhs)
+        elif isinstance(self.lhs, ArithmeticExpr):
+            sl.signals.extend(self.lhs._ToSensitivityList(frameDepth + 1).signals)
+        else:
+            raise ParseException(f"Bad item for sensitivity list: {self.lhs}")
+
+        if isinstance(self.rhs, Net):
+            sl.PushSignal(self.rhs)
+        elif isinstance(self.rhs, ArithmeticExpr):
+            sl.signals.extend(self.rhs._ToSensitivityList(frameDepth + 1).signals)
+        else:
+            raise ParseException(f"Bad item for sensitivity list: {self.rhs}")
+
+        return sl
+
     #XXX
-    pass
 
 
 class ConditionalExpr(Expression):
@@ -640,9 +731,10 @@ class ConditionalExpr(Expression):
 
 class Statement(SyntaxNode):
 
-    def __init__(self, frameDepth: int):
+    def __init__(self, frameDepth: int, deferPush: bool = False):
         super().__init__(frameDepth + 1)
-        CompileCtx.Current().PushStatement(self)
+        if not deferPush:
+            CompileCtx.Current().PushStatement(self)
 
     #XXX
 
@@ -656,12 +748,17 @@ class Block(SyntaxNode):
         self._statements = list()
 
 
+    def __len__(self):
+        return len(self._statements)
+
+
     def PushStatement(self, stmt: Statement):
         self._statements.append(stmt)
 
 
     def Render(self, ctx: RenderCtx):
         for stmt in self._statements:
+            ctx.WriteIndent(stmt.indent)
             stmt.Render(ctx)
             ctx.Write("\n")
 
@@ -670,6 +767,7 @@ class AssignmentStatement(Statement):
     lhs: Expression
     rhs: Expression
     isBlocking: bool
+    isProceduralBlock: bool
 
     def __init__(self, lhs: Expression, rhs: Expression | int, *, isBlocking: bool, frameDepth: int):
         super().__init__(frameDepth + 1)
@@ -678,8 +776,14 @@ class AssignmentStatement(Statement):
         self.lhs = lhs
         self.rhs= rhs
         self.isBlocking = isBlocking
+        self.isProceduralBlock = CompileCtx.Current().isProceduralBlock
         lhs._Wire(True, frameDepth + 1)
         rhs._Wire(False, frameDepth + 1)
+
+        if self.isProceduralBlock and not self.isBlocking:
+            for e in self.lhs._GetLeafNodes():
+                if isinstance(e, Net) and not e.isReg:
+                    raise ParseException(f"Procedural assignment to wire {e}")
 
         assert lhs.size is not None
         if rhs.size is not None:
@@ -691,11 +795,11 @@ class AssignmentStatement(Statement):
 
 
     def Render(self, ctx: RenderCtx):
-        #XXX check if in procedural block
-        ctx.Write(f"assign {ctx.RenderNested(self.lhs)} = {ctx.RenderNested(self.rhs)};")
-
-
-    #XXX
+        if self.isProceduralBlock:
+            op = "=" if self.isBlocking else "<="
+            ctx.Write(f"{ctx.RenderNested(self.lhs)} {op} {ctx.RenderNested(self.rhs)};")
+        else:
+            ctx.Write(f"assign {ctx.RenderNested(self.lhs)} = {ctx.RenderNested(self.rhs)};")
 
 
 class IfStatement(Statement):
@@ -708,6 +812,134 @@ class CaseStatement(Statement):
     pass
 
 
+class EdgeTrigger(SyntaxNode):
+    net: Net
+    isPositive: bool
+
+
+    def __init__(self, net: Net, isPositive: bool, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.net = net
+        self.isPositive = isPositive
+
+
+    def Render(self, ctx: RenderCtx):
+        ctx.Write("posedge" if self.isPositive else "negedge")
+        ctx.Write(" ")
+        self.net.Render(ctx)
+
+
+    def _Wire(self, frameDepth: int) -> bool:
+        return self.net._Wire(False, frameDepth + 1)
+
+
+    def __or__(self, rhs: "EdgeTrigger") -> "SensitivityList":
+        sl = SensitivityList(1)
+        sl.PushSignal(self)
+        sl.PushSignal(rhs)
+        return sl
+
+
+class SensitivityList(SyntaxNode):
+    signals: List[EdgeTrigger | Net]
+
+
+    def __init__(self, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.signals = list()
+
+
+    def PushSignal(self, signal: Net | EdgeTrigger):
+        if not isinstance(signal, Net) and not isinstance(signal, EdgeTrigger):
+            raise ParseException(f"Unexpected item in a sensitivity list: {signal}")
+        self.signals.append(signal)
+
+
+    def _Wire(self, frameDepth: int):
+        isEdge = None
+        for sig in self.signals:
+            if isinstance(sig, Net):
+                if isEdge is not None and isEdge:
+                    raise ParseException("Mixed edge and activity triggers")
+                isEdge = False
+                sig._Wire(False, frameDepth + 1)
+            else:
+                if isEdge is not None and not isEdge:
+                    raise ParseException("Mixed edge and activity triggers")
+                isEdge = True
+                sig._Wire(frameDepth + 1)
+
+
+    def Render(self, ctx: RenderCtx):
+        isFirst = True
+        for sig in self.signals:
+            if isFirst:
+                isFirst = False
+            else:
+                ctx.Write(", ")
+            sig.Render(ctx)
+
+
+    def _Combine(self, rhs: "Expression | SensitivityList | EdgeTrigger", frameDepth: int):
+        sl = SensitivityList(frameDepth + 1)
+        sl.signals.extend(self.signals)
+        if isinstance(rhs, SensitivityList):
+            sl.signals.extend(rhs.signals)
+        elif isinstance(rhs, ArithmeticExpr):
+            sl.signals.extend(rhs._ToSensitivityList(frameDepth + 1).signals)
+        elif isinstance(rhs, EdgeTrigger):
+            sl.signals.append(rhs)
+        elif isinstance(rhs, Net):
+            raise ParseException(f"Cannot mix edge and activity triggers: {rhs}")
+        else:
+            raise ParseException(f"Bad item for sensitivity list: {rhs}")
+        return sl
+
+
+    def __or__(self, rhs: "Expression | SensitivityList | EdgeTrigger"):
+        return self._Combine(rhs, 1)
+
+
 class ProceduralBlock(Statement):
+    sensitivityList: Optional[SensitivityList]
+    body: Block
+
+
+    def __init__(self, sensitivityList: Optional[SensitivityList], frameDepth: int):
+        super().__init__(frameDepth + 1, deferPush=True)
+        self.sensitivityList = sensitivityList
+
+
+    def __enter__(self):
+        self.body = Block(1)
+        ctx = CompileCtx.Current()
+        ctx.PushBlock(self.body)
+        ctx.isProceduralBlock = True
+
+
+    def __exit__(self, excType, excValue, tb):
+        ctx = CompileCtx.Current()
+        if ctx.PopBlock() is not self.body:
+            raise Exception("Unexpected current block")
+        ctx.isProceduralBlock = False
+        if len(self.body) == 0:
+            ctx.Warning(f"Empty procedural block", self.srcFrame)
+        else:
+            if self.sensitivityList is not None:
+                self.sensitivityList._Wire(1)
+            ctx.PushStatement(self)
+
+
+    def Render(self, ctx: RenderCtx):
+        ctx.Write("always @")
+        if self.sensitivityList is None:
+            ctx.Write("*")
+        else:
+            ctx.Write("(")
+            self.sensitivityList.Render(ctx)
+            ctx.Write(")")
+        ctx.Write(" begin\n")
+        self.body.Render(ctx)
+        ctx.Write("end\n")
+
     #XXX
-    pass

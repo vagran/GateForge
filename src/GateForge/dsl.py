@@ -1,6 +1,7 @@
 import collections.abc
 from typing import List, Optional, Tuple, Type, cast
-from GateForge.core import Const, ParseException, Reg, Wire
+from GateForge.core import ArithmeticExpr, Const, Net, ParseException, ProceduralBlock, Reg, \
+    SensitivityList, Wire
 
 
 def const(value: str | int, size: Optional[int] = None) -> Const:
@@ -39,3 +40,16 @@ def wire(sizeOrName: int | List[int] | Tuple[int] | str | None = None, /,
 def reg(sizeOrName: int | List[int] | Tuple[int] | str | None = None, /,
         name: Optional[str] = None) -> Reg:
     return cast(Reg, _CreateNet(True, sizeOrName, name))
+
+
+def always(sensitivityList: SensitivityList | Net | ArithmeticExpr | None = None) -> ProceduralBlock:
+    sl: Optional[SensitivityList]
+    if isinstance(sensitivityList, Net):
+        sl = SensitivityList(1)
+        sl.PushSignal(sensitivityList)
+    elif isinstance(sensitivityList, ArithmeticExpr):
+        # Should be wire | wire
+        sl = sensitivityList._ToSensitivityList(1)
+    else:
+        sl = sensitivityList
+    return ProceduralBlock(sl, 1)

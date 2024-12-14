@@ -8,9 +8,10 @@ from GateForge.dsl import reg, wire
 
 class TestBase(unittest.TestCase):
 
-    def CheckResult(self, moduleFunc, expected: str, expectedWarnings = 0):
+    def CheckResult(self, moduleFunc, expected: str, expectedWarnings = 0,
+                    moduleName = None):
         output = io.StringIO()
-        result = CompileModule(moduleFunc, output)
+        result = CompileModule(moduleFunc, output, moduleName=moduleName)
         self.assertEqual(output.getvalue(), expected)
         self.assertEqual(len(result.warnings), expectedWarnings)
 
@@ -70,7 +71,24 @@ assign out_0 = in_1;
 endmodule
 """.lstrip())
 
-    #XXX check module name
+
+    def test_module_name(self):
+
+        def TestModule():
+            _in = wire("in").input
+            _out = reg("out").output
+
+            _out <<= _in
+
+        self.CheckResult(TestModule, """
+module RenamedModule(
+    input wire in,
+    output reg out);
+
+assign out = in;
+endmodule
+""".lstrip(), moduleName="RenamedModule")
+        
 
 if __name__ == "__main__":
     unittest.main()
