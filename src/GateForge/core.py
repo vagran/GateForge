@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from io import TextIOBase
 import io
 import threading
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterable, Iterator, List, Optional, Tuple
 import traceback
 import re
 import math
@@ -26,24 +26,83 @@ class WarningMsg:
         return f"WARN {self.msg}"
 
 
+@dataclass
+class RenderOptions:
+    sourceMap: bool = False
+
+
+_identPat = re.compile(r"[a-z_][a-z_$\d]*", re.RegexFlag.IGNORECASE)
+_keywords = [
+    "always",
+    "always_comb",
+    "always_ff",
+    "always_latch",
+    "assign",
+    "begin",
+    "case",
+    "else",
+    "end",
+    "endcase",
+    "endfunction",
+    "endmodule",
+    "endprimitive",
+    "endtable",
+    "endtask",
+    "enum",
+    "for",
+    "forever",
+    "function",
+    "if",
+    "initial",
+    "input",
+    "integer",
+    "localparam",
+    "logic",
+    "module",
+    "negedge",
+    "output",
+    "parameter",
+    "posedge",
+    "primitive",
+    "real",
+    "reg",
+    "repeat",
+    "table",
+    "task",
+    "time",
+    "timescale",
+    "typedef",
+    "while",
+    "wire"
+]
+
+def _CheckIdentifier(s: str):
+    if _identPat.fullmatch(s) is None:
+        raise ParseException(f"Not a valid identifier: {s}")
+    if s in _keywords:
+        raise ParseException(f"Cannot use Verilog keyword as identifier: {s}")
+
+
 class CompileCtx:
 
     lastFrame: Optional[traceback.FrameSummary] = None
 
     _threadLocal = threading.local()
     _curNetIdx: int
-    _netNames: dict[str, "Net"]
-    _ports: dict["Expression", "Port"]
+    _nets: dict[str, "Net"]
+    _ports: dict[str, "Port"]
     _blockStack: List["Block"]
     _warnings: List[WarningMsg]
 
 
-    def __init__(self):
+    def __init__(self, moduleName: str):
         self._curNetIdx = 0
-        self._netNames = dict()
+        self._nets = dict()
         self._ports = dict()
         self._blockStack = list()
         self._warnings = list()
+        self.moduleName = moduleName
+        _CheckIdentifier(moduleName)
 
 
     @staticmethod
@@ -90,7 +149,7 @@ class CompileCtx:
 
     def GenerateNetName(self, isReg: bool, initialName: Optional[str] = None) -> str:
         if initialName is not None:
-            if initialName not in self._netNames:
+            if initialName not in self._nets:
                 return initialName
             namePrefix = initialName
         elif isReg:
@@ -102,16 +161,20 @@ class CompileCtx:
             idx = self._curNetIdx
             self._curNetIdx += 1
             name = f"{namePrefix}_{idx}"
-            if name in self._netNames:
+            if name in self._nets:
                 continue
             return name
 
 
     def RegisterNet(self, net: "Net"):
-        f = self._netNames.get(net.name, None)
-        if f is not None:
-            raise ParseException(f"Net with name `{net.name}` already declared at {net.fullLocation}")
-        self._netNames[net.name] = net
+        existing = self._nets.get(net.name, None)
+        if existing is not None:
+            raise ParseException(
+                f"Net with name `{net.name}` already declared at {existing.fullLocation}, "
+                f"redeclaration at {net.fullLocation}")
+        self._nets[net.name] = net
+        if isinstance(net, Port):
+            self._ports[net.name] = net
 
 
     def PushStatement(self, stmt: "Statement"):
@@ -129,9 +192,48 @@ class CompileCtx:
         self._blockStack.append(Block(frameDepth + 1))
 
 
-@dataclass
-class RenderOptions:
-    sourceMap: bool = False
+    def Render(self, output: TextIOBase, renderOptions: RenderOptions):
+        if len(self._blockStack) != 1:
+            raise Exception(f"Unexpected block stack size: {len(self._blockStack)}")
+
+        ctx = RenderCtx()
+        ctx.options = renderOptions
+        ctx.output = output
+
+        ctx.renderDecl = True
+        self._RenderModuleDeclaration(ctx)
+        self._RenderNetsDeclarations(ctx)
+        ctx.Write("\n")
+
+        ctx.renderDecl = False
+        self._blockStack[0].Render(ctx)
+
+        ctx.Write("endmodule\n")
+
+
+    def GetWarnings(self) -> Iterable[WarningMsg]:
+        return self._warnings
+
+
+    def _RenderModuleDeclaration(self, ctx: "RenderCtx"):
+        ctx.Write(f"module {self.moduleName}(")
+        isFirst = True
+        for port in sorted(self._ports.values(), key=lambda p: p.name):
+            if not isFirst:
+                ctx.Write(",\n    ")
+            else:
+                ctx.Write("\n    ")
+                isFirst = False
+            port.Render(ctx)
+        ctx.Write(");\n")
+
+
+    def _RenderNetsDeclarations(self, ctx: "RenderCtx"):
+        for net in sorted(self._nets.values(), key=lambda n: n.name):
+            if isinstance(net, Port):
+                continue
+            net.Render(ctx)
+            ctx.Write(";\n")
 
 
 class RenderCtx:
@@ -373,8 +475,6 @@ class Net(Expression):
     # Actual name is resolved when wired
     name: str
 
-    _identPat = re.compile(r"[a-z_][a-z_$\d]*", re.RegexFlag.IGNORECASE)
-
 
     def __init__(self, *, size: int, baseIndex: Optional[int], isReg: bool, name: Optional[str],
                  frameDepth: int):
@@ -389,7 +489,7 @@ class Net(Expression):
         self.isReg = isReg
 
         if name is not None:
-            self._CheckIdentifier(name)
+            _CheckIdentifier(name)
             self.initialName = name
 
 
@@ -410,17 +510,19 @@ class Net(Expression):
             assert self.size is not None
             if self.baseIndex != 0 or self.size > 1:
                 s += f"[{self.baseIndex + self.size - 1}:{self.baseIndex}]"
-            s += f" {name};"
+            s += f" {name}"
             ctx.Write(s)
         else:
             ctx.Write(name)
 
 
     def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
-        if not super()._Wire(isLhs, frameDepth):
+        if not super()._Wire(isLhs, frameDepth + 1):
             return False
         ctx = CompileCtx.Current()
-        self.name = ctx.GenerateNetName(self.isReg, self.initialName)
+        # Ports have fixed names, so it is initialized in constructor
+        if not hasattr(self, "name"):
+            self.name = ctx.GenerateNetName(self.isReg, self.initialName)
         ctx.RegisterNet(self)
         return True
 
@@ -435,11 +537,6 @@ class Net(Expression):
     def output(self):
         #XXX check frameDepth for property
         return Port(self, True, 1)
-
-
-    def _CheckIdentifier(self, s: str):
-        if self._identPat.fullmatch(s) is None:
-            raise ParseException(f"Not a valid identifier: {s}")
 
 
 class Wire(Net):
@@ -463,10 +560,20 @@ class Port(Net):
                          name=src.initialName, frameDepth=frameDepth + 1)
         self.src = src
         self.isLhs = isOutput
+        self.isOutput = isOutput
+        self.name = self.initialName
 
-    #XXX
 
-    #XXX wire exact name
+    # Treating source Net as absorbed so it is not enumerated as child.
+
+
+    def Render(self, ctx: RenderCtx):
+        if ctx.renderDecl:
+            ctx.Write("output" if self.isOutput else "input")
+            ctx.Write(" ")
+            super().Render(ctx)
+        else:
+            super().Render(ctx)
 
 
 class ConcatExpr(Expression):
@@ -552,7 +659,11 @@ class Block(SyntaxNode):
     def PushStatement(self, stmt: Statement):
         self._statements.append(stmt)
 
-    #XXX
+
+    def Render(self, ctx: RenderCtx):
+        for stmt in self._statements:
+            stmt.Render(ctx)
+            ctx.Write("\n")
 
 
 class AssignmentStatement(Statement):

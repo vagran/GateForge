@@ -1,6 +1,12 @@
 {
     "cSpell.words": [
+        "endcase",
+        "endfunction",
         "endmodule",
+        "endprimitive",
+        "endtable",
+        "endtask",
+        "localparam",
         "negedge",
         "posedge",
         "Synthesizable",

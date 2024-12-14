@@ -8,7 +8,7 @@ from GateForge.dsl import const, reg, wire
 class TestBase(unittest.TestCase):
 
     def setUp(self):
-        self.compileCtx = CompileCtx()
+        self.compileCtx = CompileCtx("test")
         CompileCtx.Open(self.compileCtx, 0)
         self.ctx = RenderCtx()
 
@@ -22,7 +22,7 @@ class TestBase(unittest.TestCase):
         # Check source is in current file
         self.assertEqual(Path(stmt.srcFrame.filename).name, "test_statements.py")
         self.assertEqual(self.ctx.RenderNested(stmt), expected)
-        self.assertEqual(len(self.compileCtx._warnings), expectedWarnings)
+        self.assertEqual(len(self.compileCtx.GetWarnings()), expectedWarnings)
 
 
 class Test(TestBase):

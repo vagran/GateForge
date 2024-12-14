@@ -9,7 +9,7 @@ from pathlib import Path
 class TestBase(unittest.TestCase):
 
     def setUp(self):
-        CompileCtx.Open(CompileCtx(), 0)
+        CompileCtx.Open(CompileCtx("test"), 0)
         self.ctx = RenderCtx()
 
 
@@ -58,16 +58,14 @@ class Net(TestBase):
         r = reg("r")
         self.CheckExpr(r, "r")
         self.ctx.renderDecl = True
-        self.CheckExpr(w, "wire w;")
-        self.CheckExpr(r, "reg r;")
+        self.CheckExpr(w, "wire w")
+        self.CheckExpr(r, "reg r")
 
-        self.CheckExpr(wire(2, "w"), "wire[1:0] w;")
+        self.CheckExpr(wire(2, "w"), "wire[1:0] w")
 
-        self.CheckExpr(wire([3, 1], "w"), "wire[3:1] w;")
-        self.CheckExpr(reg((5, 0), "w"), "reg[5:0] w;")
-        self.CheckExpr(reg((1, 1), "w"), "reg[1:1] w;")
-
-        #XXX non-identifier error
+        self.CheckExpr(wire([3, 1], "w"), "wire[3:1] w")
+        self.CheckExpr(reg((5, 0), "w"), "reg[5:0] w")
+        self.CheckExpr(reg((1, 1), "w"), "reg[1:1] w")
 
         with self.assertRaises(ParseException):
             reg((1,2))
@@ -81,6 +79,9 @@ class Net(TestBase):
 
         with self.assertRaises(ParseException):
             reg("16")
+
+        with self.assertRaises(ParseException):
+            reg("reg")
 
 
 
