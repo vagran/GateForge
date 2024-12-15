@@ -1,4 +1,3 @@
-import io
 import unittest
 
 from GateForge.core import CompileCtx, Expression, ParseException, RenderCtx
@@ -136,6 +135,41 @@ class Concat(TestBase):
             self.CheckExpr(w1 % w2 % 5, "")
         self.CheckExpr(w1 % const(5, 3) % w3, "{w1, 3'h5, w3}")
 
+
+
+class Arithmetic(TestBase):
+
+    def test_basic(self):
+        w1 = wire("w1")
+        w2 = wire(8, "w2")
+        w3 = wire("w3")
+        w4 = wire("w4")
+
+        self.CheckExpr(w1 | w2, "w1 | w2")
+        self.CheckExpr(w1 | w2 | w3, "w1 | w2 | w3")
+        self.CheckExpr(w1 | w2 | w3 | w4, "w1 | w2 | w3 | w4")
+        self.CheckExpr(const(5) | w2 | w3, "'h5 | w2 | w3")
+        self.CheckExpr(w1 | 5 | w3, "w1 | 'h5 | w3")
+        self.CheckExpr(w1 | w2 | 5, "w1 | w2 | 'h5")
+
+        self.CheckExpr(w1 & w2, "w1 & w2")
+        self.CheckExpr(w1 & w2 & w3, "w1 & w2 & w3")
+        self.CheckExpr(w1 & w2 & w3 & w4, "w1 & w2 & w3 & w4")
+
+        self.CheckExpr(w1 ^ w2, "w1 ^ w2")
+        self.CheckExpr(w1 ^ w2 ^ w3, "w1 ^ w2 ^ w3")
+        self.CheckExpr(w1 ^ w2 ^ w3 ^ w4, "w1 ^ w2 ^ w3 ^ w4")
+
+        self.CheckExpr(w1 | w2 & w3 | w4, "w1 | (w2 & w3) | w4")
+        self.CheckExpr((w1 | w2) & (w3 | w4), "(w1 | w2) & (w3 | w4)")
+
+        self.CheckExpr(~w1, "~w1")
+        self.CheckExpr(~w1 | ~w2, "~w1 | ~w2")
+        self.CheckExpr(~w1 | ~w2 | ~w3, "~w1 | ~w2 | ~w3")
+        self.CheckExpr(~(w1 | w2), "~(w1 | w2)")
+        self.CheckExpr(~(w1 | w2) | ~w3, "~(w1 | w2) | ~w3")
+        self.CheckExpr(~(w1 | ~w2) & (~w3 | w4), "~(w1 | ~w2) & (~w3 | w4)")
+        self.CheckExpr(~(w1 | ~w2)[7:4] & (~w3 | w4), "~(w1 | ~w2)[7:4] & (~w3 | w4)")
 
 
 #XXX check parenthesis for arithmetic expressions

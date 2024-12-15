@@ -271,6 +271,7 @@ class RenderCtx:
         return ctx
 
 
+    #XXX remove
     def RenderNested(self, node: "SyntaxNode") -> str:
         with io.StringIO() as output:
             ctx = self.CreateNested(output)
@@ -337,6 +338,7 @@ class Expression(SyntaxNode):
     # affect the produced output, however, may be used, for example, to define external module ports.
     isWired: bool = False
     wiringFrame: traceback.FrameSummary
+    needParenthesis: bool = False
 
 
     def _CheckSlice(self, s: int | slice) -> Tuple[int, int]:
@@ -406,6 +408,14 @@ class Expression(SyntaxNode):
         return s
 
 
+    def RenderNested(self, ctx: RenderCtx):
+        if self.needParenthesis:
+            ctx.Write("(")
+        self.Render(ctx)
+        if self.needParenthesis:
+            ctx.Write(")")
+
+
     def __ilshift__(self, rhs: "Expression | int"):
         AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
 
@@ -429,7 +439,19 @@ class Expression(SyntaxNode):
     def __or__(self, rhs: "Expression | int | SensitivityList"):
         if isinstance(rhs, SensitivityList):
             return rhs._Combine(self, 1)
-        return ArithmeticExpr("|", self, rhs, 1)
+        return ArithmeticExpr("|", (self, rhs), 1)
+
+
+    def __and__(self, rhs: "Expression | int"):
+        return ArithmeticExpr("&", (self, rhs), 1)
+
+
+    def __xor__(self, rhs: "Expression | int"):
+        return ArithmeticExpr("^", (self, rhs), 1)
+
+
+    def __invert__(self):
+        return UnaryOperator("~", self, 1)
 
 
 class Const(Expression):
@@ -656,11 +678,11 @@ class Port(Net):
 
 
 class ConcatExpr(Expression):
-    src: List[Expression]
+    args: List[Expression]
 
-    def __init__(self, src: Iterable[Expression | int], frameDepth: int):
+    def __init__(self, args: Iterable[Expression | int], frameDepth: int):
         super().__init__(frameDepth + 1)
-        self.src = list(ConcatExpr._FlattenConcat(src, frameDepth + 1))
+        self.args = list(ConcatExpr._FlattenConcat(args, frameDepth + 1))
         self._CalculateSize()
 
 
@@ -671,7 +693,7 @@ class ConcatExpr(Expression):
         """
         for e in src:
             if isinstance(e, ConcatExpr):
-                yield from ConcatExpr._FlattenConcat(e.src, frameDepth + 1)
+                yield from ConcatExpr._FlattenConcat(e.args, frameDepth + 1)
             elif isinstance(e, int):
                 yield Const(e, frameDepth=frameDepth + 1)
             else:
@@ -682,7 +704,7 @@ class ConcatExpr(Expression):
         size = 0
         isFirst = True
         isLhs = True
-        for e in self.src:
+        for e in self.args:
             if isFirst:
                 isFirst = False
                 if e.size is None:
@@ -701,13 +723,13 @@ class ConcatExpr(Expression):
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
-        yield from self.src
+        yield from self.args
 
 
     def Render(self, ctx: RenderCtx):
         ctx.Write("{")
         isFirst = True
-        for e in self.src:
+        for e in self.args:
             if isFirst:
                 isFirst = False
             else:
@@ -717,17 +739,17 @@ class ConcatExpr(Expression):
 
 
 class SliceExpr(Expression):
-    src: Expression
+    arg: Expression
     # Index is always zero-based, nets' base index is applied before if needed.
     index: int
 
 
-    def __init__(self, src: Expression, index: int, size: int, frameDepth: int):
+    def __init__(self, arg: Expression, index: int, size: int, frameDepth: int):
         super().__init__(frameDepth + 1)
-        self.src = src
-        self.isLhs = self.src.isLhs
-        if self.src.size is not None:
-            self._CheckRange(index, size, self.src.size)
+        self.arg = arg
+        self.isLhs = self.arg.isLhs
+        if self.arg.size is not None:
+            self._CheckRange(index, size, self.arg.size)
         self.size = size
         self.index = index
 
@@ -743,41 +765,63 @@ class SliceExpr(Expression):
         # Slicing is optimized to use inner slice source directly
         index, size = self._CheckSlice(s)
         self._CheckRange(index, size, self.size)
-        return SliceExpr(self.src, self.index + index, size, 1)
+        return SliceExpr(self.arg, self.index + index, size, 1)
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
-        yield self.src
+        yield self.arg
 
 
     def Render(self, ctx: RenderCtx):
         index = self.index
         assert self.size is not None
         size = self.size
-        if isinstance(self.src, Net):
-            index += self.src.baseIndex
+        if isinstance(self.arg, Net):
+            index += self.arg.baseIndex
         if size == 1:
             s = str(index)
         else:
             s = f"{index + size - 1}:{index}"
-        ctx.Write(f"{ctx.RenderNested(self.src)}[{s}]")
+        self.arg.RenderNested(ctx)
+        ctx.Write(f"[{s}]")
 
 
 class ArithmeticExpr(Expression):
     op: str
-    lhs: Expression
-    rhs: Expression
+    args: List[Expression]
+    needParenthesis = True
 
 
-    def __init__(self, op: str, lhs: Expression, rhs: Expression | int, frameDepth: int):
+    def __init__(self, op: str, args: Iterable[Expression | int], frameDepth: int):
         super().__init__(frameDepth + 1)
         self.strValue = f"Op({op})"
         self.op = op
-        self.lhs = lhs
-        if isinstance(rhs, int):
-            self.rhs = Const(rhs, frameDepth=frameDepth + 1)
-        else:
-            self.rhs = rhs
+        self.args = list(self._FlattenArithmeticExpr(args, frameDepth + 1))
+        self.size = self._CalculateSize()
+
+
+    def _FlattenArithmeticExpr(self, src: Iterable[Expression | int], frameDepth: int) -> Iterator[Expression]:
+        """
+        Flatten combine nested expressions as much as possible
+        """
+        for e in src:
+            if isinstance(e, ArithmeticExpr):
+                if e.op == self.op:
+                    yield from self._FlattenArithmeticExpr(e.args, frameDepth + 1)
+                else:
+                    yield e
+            elif isinstance(e, int):
+                yield Const(e, frameDepth=frameDepth + 1)
+            else:
+                yield e
+
+
+    def _CalculateSize(self):
+        size = None
+        for e in self.args:
+            if size is not None and (size is None or e.size > size):
+                size = e.size
+        self.size = size
 
 
     def _ToSensitivityList(self, frameDepth: int) -> "SensitivityList":
@@ -785,24 +829,52 @@ class ArithmeticExpr(Expression):
             raise ParseException(f"Only `|` operation allowed for sensitivity list, has `{self.op}`")
 
         sl = SensitivityList(frameDepth + 1)
-
-        if isinstance(self.lhs, Net):
-            sl.PushSignal(self.lhs)
-        elif isinstance(self.lhs, ArithmeticExpr):
-            sl.signals.extend(self.lhs._ToSensitivityList(frameDepth + 1).signals)
-        else:
-            raise ParseException(f"Bad item for sensitivity list: {self.lhs}")
-
-        if isinstance(self.rhs, Net):
-            sl.PushSignal(self.rhs)
-        elif isinstance(self.rhs, ArithmeticExpr):
-            sl.signals.extend(self.rhs._ToSensitivityList(frameDepth + 1).signals)
-        else:
-            raise ParseException(f"Bad item for sensitivity list: {self.rhs}")
+        for e in self.args:
+            if isinstance(e, Net):
+                sl.PushSignal(e)
+            else:
+                raise ParseException(f"Bad item for sensitivity list: {e}")
 
         return sl
 
-    #XXX
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield from self.args
+
+
+    def Render(self, ctx: RenderCtx):
+        isFirst = True
+        for e in self.args:
+            if isFirst:
+                isFirst = False
+            else:
+                ctx.Write(f" {self.op} ")
+            e.RenderNested(ctx)
+
+
+class UnaryOperator(Expression):
+    op: str
+    arg: Expression
+
+
+    def __init__(self, op: str, arg: Expression | int, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.strValue = f"Unary({op})"
+        self.op = op
+        if isinstance(arg, int):
+            self.arg = Const(arg, frameDepth=frameDepth + 1)
+        else:
+            self.arg = arg
+        self.size = self.arg.size
+
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield self.arg
+
+
+    def Render(self, ctx: RenderCtx):
+        ctx.Write(self.op)
+        self.arg.RenderNested(ctx)
 
 
 class ConditionalExpr(Expression):
@@ -1022,5 +1094,3 @@ class ProceduralBlock(Statement):
         ctx.Write(" begin\n")
         self.body.Render(ctx)
         ctx.Write("end\n")
-
-    #XXX
