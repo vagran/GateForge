@@ -85,7 +85,18 @@ class Test(TestBase):
             c[15:8] <<= 42
 
 
-    # concat const assignment
+    def test_continuous_assignment_concat_lhs(self):
+        w1 = wire("w1")
+        w2 = wire("w2")
+        (w1 % w2).assign(3)
+        self.CheckResult("assign {w1, w2} = 'h3;")
+
+
+    def test_continuous_assignment_concat_non_lhs(self):
+        w1 = wire("w1")
+        w2 = wire("w2")
+        with self.assertRaises(ParseException):
+            (const(5) % w1 % w2).assign(3)
 
 
 class ProceduralBlocks(TestBase):

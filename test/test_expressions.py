@@ -117,10 +117,28 @@ class Slice(TestBase):
             wire((15, 8))["aaa"]
 
 
-# XXX constant concat
+class Concat(TestBase):
 
-# XXX constant posedge, negedge, input exception
+    def test_basic(self):
+        w1 = wire("w1")
+        w2 = wire(8, "w2")
+        w3 = wire("w3")
+        w4 = wire("w4")
+        self.CheckExpr(w1 % w2, "{w1, w2}")
+        self.CheckExpr(w1 % w2 % w3, "{w1, w2, w3}")
+        self.CheckExpr(w1 % w2 % w3 % w4, "{w1, w2, w3, w4}")
+        self.CheckExpr(w1 % w2[7:4] % w3 % w4, "{w1, w2[7:4], w3, w4}")
 
+        self.CheckExpr(const(5) % w2 % w3, "{'h5, w2, w3}")
+        with self.assertRaises(ParseException):
+            self.CheckExpr(w1 % 5 % w3, "")
+        with self.assertRaises(ParseException):
+            self.CheckExpr(w1 % w2 % 5, "")
+        self.CheckExpr(w1 % const(5, 3) % w3, "{w1, 3'h5, w3}")
+
+
+
+#XXX check parenthesis for arithmetic expressions
 
 if __name__ == "__main__":
     unittest.main()

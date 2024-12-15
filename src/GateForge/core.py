@@ -382,16 +382,28 @@ class Expression(SyntaxNode):
         Wire the expression.
         :return: True if wired, false if already was wired earlier.
         """
-        for child in self._GetChildren():
-            child._Wire(isLhs, frameDepth + 1)
         if isLhs and not self.isLhs:
-            #XXX provide definition frames
-            raise ParseException("Attempting to wire RHS expression as LHS, assignment target cannot be written to")
+            raise ParseException(
+                "Attempting to wire RHS expression as LHS, assignment target cannot be written to\n" +
+                self._DescribeNonLhs())
         if self.isWired:
             return False
+        for child in self._GetChildren():
+            child._Wire(isLhs, frameDepth + 1)
         self.isWired = True
         self.wiringFrame = self.GetFrame(frameDepth + 1)
         return True
+
+
+    def _DescribeNonLhs(self, indent: int =  0) -> str:
+        """Get structure details for non-LHS expression used in LHS context"""
+        assert not self.isLhs
+        s = f"{indent * '    '}Non-LHS {self}"
+        for e in self._GetChildren():
+            if e.isLhs:
+                continue
+            s += f"\n{e._DescribeNonLhs(indent + 1)}"
+        return s
 
 
     def __ilshift__(self, rhs: "Expression | int"):
@@ -400,6 +412,18 @@ class Expression(SyntaxNode):
 
     def __ifloordiv__(self, rhs: "Expression | int"):
         AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
+
+
+    def assign(self, rhs: "Expression | int"):
+        AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
+
+
+    def bassign(self, rhs: "Expression | int"):
+        AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
+
+
+    def __mod__(self, rhs: "Expression | int"):
+        return ConcatExpr((self, rhs), 1)
 
 
     def __or__(self, rhs: "Expression | int | SensitivityList"):
@@ -616,6 +640,7 @@ class Port(Net):
         self.isLhs = isOutput
         self.isOutput = isOutput
         self.name = src.initialName
+        self.strValue = f"{'Output' if isOutput else 'Input'}(`{self.name}`)"
 
 
     # Treating source Net as absorbed so it is not enumerated as child.
@@ -631,8 +656,64 @@ class Port(Net):
 
 
 class ConcatExpr(Expression):
-    #XXX
-    pass
+    src: List[Expression]
+
+    def __init__(self, src: Iterable[Expression | int], frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.src = list(ConcatExpr._FlattenConcat(src, frameDepth + 1))
+        self._CalculateSize()
+
+
+    @staticmethod
+    def _FlattenConcat(src: Iterable[Expression | int], frameDepth: int) -> Iterator[Expression]:
+        """
+        Flatten concatenation of concatenations as much as possible
+        """
+        for e in src:
+            if isinstance(e, ConcatExpr):
+                yield from ConcatExpr._FlattenConcat(e.src, frameDepth + 1)
+            elif isinstance(e, int):
+                yield Const(e, frameDepth=frameDepth + 1)
+            else:
+                yield e
+
+
+    def _CalculateSize(self):
+        size = 0
+        isFirst = True
+        isLhs = True
+        for e in self.src:
+            if isFirst:
+                isFirst = False
+                if e.size is None:
+                    size = None
+            else:
+                if e.size is None:
+                    raise ParseException(
+                        "Concatenation can have expression with unbound size on left-most position"
+                         f" only, unbound expression: {e}")
+                if size is not None:
+                    size += e.size
+            if not e.isLhs:
+                isLhs = False
+        self.size = size
+        self.isLhs = isLhs
+
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield from self.src
+
+
+    def Render(self, ctx: RenderCtx):
+        ctx.Write("{")
+        isFirst = True
+        for e in self.src:
+            if isFirst:
+                isFirst = False
+            else:
+                ctx.Write(", ")
+            e.Render(ctx)
+        ctx.Write("}")
 
 
 class SliceExpr(Expression):
