@@ -172,6 +172,25 @@ class Arithmetic(TestBase):
         self.CheckExpr(~(w1 | ~w2)[7:4] & (~w3 | w4), "~(w1 | ~w2)[7:4] & (~w3 | w4)")
 
 
+class Comparison(TestBase):
+    def test_basic(self):
+        w1 = wire("w1")
+        w2 = wire(8, "w2")
+        w3 = wire("w3")
+        w4 = wire("w4")
+
+        self.CheckExpr(w1 == w2, "w1 == w2")
+        self.CheckExpr(w1 == w2 | w3, "w1 == (w2 | w3)")
+        self.CheckExpr(w1 | w2 == w3 | w4, "(w1 | w2) == (w3 | w4)")
+        self.CheckExpr(w1 | (w2 == w3) | w4, "w1 | (w2 == w3) | w4")
+        # Keep in mind comparison operators chaining in Python, so parentheses are mandatory
+        self.CheckExpr((w1 < w2) == (w3 > w4), "(w1 < w2) == (w3 > w4)")
+        self.CheckExpr((w1 <= w2) != (w3 >= w4), "(w1 <= w2) != (w3 >= w4)")
+
+        self.CheckExpr(w1 == 5, "w1 == 'h5")
+        self.CheckExpr(const(5) == w1, "'h5 == w1")
+
+
 #XXX check parenthesis for arithmetic expressions
 
 if __name__ == "__main__":

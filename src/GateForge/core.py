@@ -338,7 +338,7 @@ class Expression(SyntaxNode):
     # affect the produced output, however, may be used, for example, to define external module ports.
     isWired: bool = False
     wiringFrame: traceback.FrameSummary
-    needParenthesis: bool = False
+    needParentheses: bool = False
 
 
     def _CheckSlice(self, s: int | slice) -> Tuple[int, int]:
@@ -409,10 +409,10 @@ class Expression(SyntaxNode):
 
 
     def RenderNested(self, ctx: RenderCtx):
-        if self.needParenthesis:
+        if self.needParentheses:
             ctx.Write("(")
         self.Render(ctx)
-        if self.needParenthesis:
+        if self.needParentheses:
             ctx.Write(")")
 
 
@@ -452,6 +452,30 @@ class Expression(SyntaxNode):
 
     def __invert__(self):
         return UnaryOperator("~", self, 1)
+
+
+    def __lt__(self, rhs: "Expression | int") -> "ComparisonExpr":
+        return ComparisonExpr("<", self, rhs, 1)
+
+
+    def __gt__(self, rhs: "Expression | int") -> "ComparisonExpr":
+        return ComparisonExpr(">", self, rhs, 1)
+
+
+    def __le__(self, rhs: "Expression | int") -> "ComparisonExpr":
+        return ComparisonExpr("<=", self, rhs, 1)
+
+
+    def __ge__(self, rhs: "Expression | int") -> "ComparisonExpr":
+        return ComparisonExpr(">=", self, rhs, 1)
+
+
+    def __eq__(self, rhs: "Expression | int") -> "ComparisonExpr": # type: ignore
+        return ComparisonExpr("==", self, rhs, 1)
+
+
+    def __ne__(self, rhs: "Expression | int") -> "ComparisonExpr": # type: ignore
+        return ComparisonExpr("!=", self, rhs, 1)
 
 
 class Const(Expression):
@@ -656,6 +680,9 @@ class Port(Net):
             raise ParseException("Port cannot be created from unsized net")
         if src.initialName is None:
             raise ParseException("Port cannot be created from unnamed net")
+        # Input is always wire, output is always reg. Reg is optimized to wire anyway by a
+        # synthesis tool if used in combination logic only, but allows using freely it in sequential
+        # logic if needed.
         super().__init__(size=src.size, baseIndex=src.baseIndex, isReg=isOutput,
                          name=src.initialName, frameDepth=frameDepth + 1)
         self.src = src
@@ -679,6 +706,9 @@ class Port(Net):
 
 class ConcatExpr(Expression):
     args: List[Expression]
+    # Minimal number of bits required to present the value without trimming. Useful when having
+    # left-most const value with unbound size.
+    valueSize: int
 
     def __init__(self, args: Iterable[Expression | int], frameDepth: int):
         super().__init__(frameDepth + 1)
@@ -702,6 +732,7 @@ class ConcatExpr(Expression):
 
     def _CalculateSize(self):
         size = 0
+        valueSize = 0
         isFirst = True
         isLhs = True
         for e in self.args:
@@ -709,6 +740,10 @@ class ConcatExpr(Expression):
                 isFirst = False
                 if e.size is None:
                     size = None
+                    if hasattr(e, "valueSize"):
+                        valueSize = e.valueSize
+                    else:
+                        valueSize = None
             else:
                 if e.size is None:
                     raise ParseException(
@@ -716,10 +751,14 @@ class ConcatExpr(Expression):
                          f" only, unbound expression: {e}")
                 if size is not None:
                     size += e.size
+                    if valueSize is not None:
+                        valueSize += e.size
             if not e.isLhs:
                 isLhs = False
         self.size = size
         self.isLhs = isLhs
+        if valueSize is not None:
+            self.valueSize = valueSize
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
@@ -789,7 +828,7 @@ class SliceExpr(Expression):
 class ArithmeticExpr(Expression):
     op: str
     args: List[Expression]
-    needParenthesis = True
+    needParentheses = True
 
 
     def __init__(self, op: str, args: Iterable[Expression | int], frameDepth: int):
@@ -850,6 +889,56 @@ class ArithmeticExpr(Expression):
             else:
                 ctx.Write(f" {self.op} ")
             e.RenderNested(ctx)
+
+
+class ComparisonExpr(Expression):
+    op: str
+    rhs: Expression
+    lhs: Expression
+    needParentheses = True
+    size = 1
+
+
+    def __init__(self, op: str, lhs: Expression, rhs: Expression | int, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.strValue = f"Cmp({op})"
+        self.op = op
+        self.lhs = lhs
+        if isinstance(rhs, int):
+            self.rhs = Const(rhs, frameDepth=frameDepth + 1)
+        else:
+            self.rhs = rhs
+
+
+    def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
+        if not super()._Wire(isLhs, frameDepth + 1):
+            return False
+
+        lhsSize = self.lhs.size
+        if lhsSize is None and hasattr(self.lhs, "valueSize"):
+            lhsSize = self.lhs.valueSize
+
+        rhsSize = self.rhs.size
+        if rhsSize is None and hasattr(self.rhs, "valueSize"):
+            rhsSize = self.rhs.valueSize
+
+        if lhsSize is not None and rhsSize is not None and lhsSize != rhsSize:
+            CompileCtx.Current().Warning(
+                "Comparing operands of different size: "
+                f"{lhsSize}'{self.lhs} <=> {rhsSize}'{self.rhs}")
+
+        return True
+
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield self.lhs
+        yield self.rhs
+
+
+    def Render(self, ctx: RenderCtx):
+        self.lhs.RenderNested(ctx)
+        ctx.Write(f" {self.op} ")
+        self.rhs.RenderNested(ctx)
 
 
 class UnaryOperator(Expression):

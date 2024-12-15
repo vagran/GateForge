@@ -88,7 +88,32 @@ module RenamedModule(
 assign out = in;
 endmodule
 """.lstrip(), moduleName="RenamedModule")
-        
+
+
+    def test_different_size_comparison(self):
+
+        def TestModule():
+            w1 = wire("w1").output
+            w2 = wire("w2").input
+            w3 = wire("w3").input
+            w4 = wire("w4").output
+            w5 = wire(8, "w5").input
+            w1 <<= w2 == w3
+            w4 <<= w2 == w5
+
+        self.CheckResult(TestModule, """
+module TestModule(
+    output reg w1,
+    input wire w2,
+    input wire w3,
+    output reg w4,
+    input wire[7:0] w5);
+
+assign w1 = w2 == w3;
+assign w4 = w2 == w5;
+endmodule
+""".lstrip(), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
