@@ -203,5 +203,15 @@ class Comparison(TestBase):
         self.CheckExpr(const(5) == w1, "'h5 == w1")
 
 
+class Replication(TestBase):
+    def test_basic(self):
+        w1 = wire("w1")
+        self.CheckExpr(w1.replicate(5), "{5{w1}}")
+        self.CheckExpr(const(5, 3).replicate(4), "{4{3'h5}}")
+        # Unbound size replication
+        with self.assertRaises(ParseException):
+            (const(5) % w1).replicate(3)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -512,6 +512,10 @@ class Expression(SyntaxNode):
         return ComparisonExpr("!=", self, rhs, 1)
 
 
+    def replicate(self, count: int) -> "ReplicationOperator":
+        return ReplicationOperator(self, count, 1)
+
+
 class Const(Expression):
     # Minimal number of bits required to present the value without trimming
     valueSize: int
@@ -539,9 +543,11 @@ class Const(Expression):
         self.valueSize = Const.GetMinValueBits(self.value)
 
         if self.size is not None and self.valueSize > self.size:
+            trimmed = self.value & ((1 << self.size) - 1)
             CompileCtx.Current().Warning(
-                f"Constant explicit size less than value required size: {self.size} < {self.valueSize}")
-            self.value = self.value & ((1 << self.size) - 1)
+                f"Constant explicit size less than value required size: {self.size} < {self.valueSize}, "
+                f"value trimmed {self.value} => {trimmed}")
+            self.value = trimmed
 
         self.strValue = f"Const({self.value})"
 
@@ -1010,6 +1016,32 @@ class ReductionOperator(UnaryOperator):
         if isinstance(arg, Expression) and arg.size == 1:
             CompileCtx.Current().Warning(f"Reduction operator applied to 1 bit argument {arg}",
                                          self.srcFrame)
+
+
+class ReplicationOperator(Expression):
+    arg: Expression
+    count: int
+
+    def __init__(self, arg: Expression, count: int, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.strValue = f"Replicate({count})"
+        self.arg = arg
+        self.count = count
+        if self.arg.size is None:
+            raise ParseException(f"Replication operand should have size bound: {arg}")
+        self.size = self.arg.size * count
+
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield self.arg
+
+
+    def Render(self, ctx: RenderCtx):
+        ctx.Write("{")
+        ctx.Write(str(self.count))
+        ctx.Write("{")
+        self.arg.Render(ctx)
+        ctx.Write("}}")
 
 
 class ConditionalExpr(Expression):
