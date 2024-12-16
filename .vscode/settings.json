@@ -8,10 +8,12 @@
         "endtable",
         "endtask",
         "localparam",
+        "nand",
         "negedge",
         "posedge",
         "Synthesizable",
         "Unwired",
-        "Verilog"
+        "Verilog",
+        "xnor"
     ]
 }

@@ -8,7 +8,8 @@ from pathlib import Path
 class TestBase(unittest.TestCase):
 
     def setUp(self):
-        CompileCtx.Open(CompileCtx("test"), 0)
+        self.compileCtx = CompileCtx("test")
+        CompileCtx.Open(self.compileCtx, 0)
         self.ctx = RenderCtx()
 
 
@@ -16,10 +17,11 @@ class TestBase(unittest.TestCase):
         CompileCtx.Close()
 
 
-    def CheckExpr(self, expr: Expression, expected: str):
+    def CheckExpr(self, expr: Expression, expected: str, expectedWarnings = 0):
         # Check source is in current file
         self.assertEqual(Path(expr.srcFrame.filename).name, "test_expressions.py")
         self.assertEqual(self.ctx.RenderNested(expr), expected)
+        self.assertEqual(len(self.compileCtx.GetWarnings()), expectedWarnings)
 
 
 class Const(TestBase):
@@ -46,7 +48,7 @@ class Const(TestBase):
             const("5'b12")
 
         # Size trimming, warning expected
-        self.CheckExpr(const("5'hffff"), "5'h1f")
+        self.CheckExpr(const("5'hffff"), "5'h1f", 1)
 
 
 class Net(TestBase):
@@ -171,6 +173,16 @@ class Arithmetic(TestBase):
         self.CheckExpr(~(w1 | ~w2) & (~w3 | w4), "~(w1 | ~w2) & (~w3 | w4)")
         self.CheckExpr(~(w1 | ~w2)[7:4] & (~w3 | w4), "~(w1 | ~w2)[7:4] & (~w3 | w4)")
 
+        self.CheckExpr(w1.xnor(w2), "w1 ~^ w2")
+        self.CheckExpr(w1.xnor(w2.reduce_and), "w1 ~^ &w2")
+        self.CheckExpr(w1 | (w2 | w3).reduce_nand | w4, "w1 | ~&(w2 | w3) | w4")
+
+        self.CheckExpr(w1.reduce_or | w2.reduce_nor | w3.reduce_xor | w4.reduce_xnor,
+                       "|w1 | ~|w2 | ^w3 | ~^w4", 3)
+
+        with self.assertRaises(ParseException):
+            w1.reduce_and.reduce_nand
+
 
 class Comparison(TestBase):
     def test_basic(self):
@@ -190,8 +202,6 @@ class Comparison(TestBase):
         self.CheckExpr(w1 == 5, "w1 == 'h5")
         self.CheckExpr(const(5) == w1, "'h5 == w1")
 
-
-#XXX check parenthesis for arithmetic expressions
 
 if __name__ == "__main__":
     unittest.main()

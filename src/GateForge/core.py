@@ -360,7 +360,7 @@ class Expression(SyntaxNode):
             raise ParseException(f"Expected int or slice, has `{s}: {type(s).__name__}`")
 
 
-    def __getitem__(self, s):
+    def __getitem__(self, s) -> "SliceExpr":
         index, size = self._CheckSlice(s)
         return SliceExpr(self, index, size, 1)
 
@@ -432,26 +432,60 @@ class Expression(SyntaxNode):
         AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
 
 
-    def __mod__(self, rhs: "Expression | int"):
+    def __mod__(self, rhs: "Expression | int") -> "ConcatExpr":
         return ConcatExpr((self, rhs), 1)
 
 
-    def __or__(self, rhs: "Expression | int | SensitivityList"):
+    def __or__(self, rhs: "Expression | int | SensitivityList") -> "ArithmeticExpr | SensitivityList":
         if isinstance(rhs, SensitivityList):
             return rhs._Combine(self, 1)
         return ArithmeticExpr("|", (self, rhs), 1)
 
 
-    def __and__(self, rhs: "Expression | int"):
+    def __and__(self, rhs: "Expression | int") -> "ArithmeticExpr":
         return ArithmeticExpr("&", (self, rhs), 1)
 
 
-    def __xor__(self, rhs: "Expression | int"):
+    def __xor__(self, rhs: "Expression | int") -> "ArithmeticExpr":
         return ArithmeticExpr("^", (self, rhs), 1)
 
 
-    def __invert__(self):
+    def xnor(self, rhs: "Expression | int") -> "ArithmeticExpr":
+        return ArithmeticExpr("~^", (self, rhs), 1)
+
+
+    def __invert__(self) -> "UnaryOperator":
         return UnaryOperator("~", self, 1)
+
+
+    @property
+    def reduce_and(self) -> "ReductionOperator":
+        return ReductionOperator("&", self, 1)
+
+
+    @property
+    def reduce_nand(self) -> "ReductionOperator":
+        return ReductionOperator("~&", self, 1)
+
+
+    @property
+    def reduce_or(self) -> "ReductionOperator":
+        return ReductionOperator("|", self, 1)
+
+
+    @property
+    def reduce_nor(self) -> "ReductionOperator":
+        return ReductionOperator("~|", self, 1)
+
+
+    @property
+    def reduce_xor(self) -> "ReductionOperator":
+        return ReductionOperator("^", self, 1)
+
+
+    @property
+    def reduce_xnor(self) -> "ReductionOperator":
+        return ReductionOperator("~^", self, 1)
 
 
     def __lt__(self, rhs: "Expression | int") -> "ComparisonExpr":
@@ -964,6 +998,18 @@ class UnaryOperator(Expression):
     def Render(self, ctx: RenderCtx):
         ctx.Write(self.op)
         self.arg.RenderNested(ctx)
+
+
+class ReductionOperator(UnaryOperator):
+    def __init__(self, op: str, arg: Expression | int, frameDepth: int):
+        if isinstance(arg, ReductionOperator):
+            raise ParseException("Reduction operator applied on another reduction, probably a bug")
+        super().__init__(op, arg, frameDepth + 1)
+        self.strValue = f"Reduce({op})"
+        self.size = 1
+        if isinstance(arg, Expression) and arg.size == 1:
+            CompileCtx.Current().Warning(f"Reduction operator applied to 1 bit argument {arg}",
+                                         self.srcFrame)
 
 
 class ConditionalExpr(Expression):
