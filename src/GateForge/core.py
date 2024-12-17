@@ -408,6 +408,13 @@ class Expression(SyntaxNode):
         return s
 
 
+    @staticmethod
+    def _CheckType(e: "Expression") -> "Expression":
+        if not isinstance(e, Expression):
+            raise ParseException(f"Expected instance of `Expression`, has `{type(e).__name__}`")
+        return e
+
+
     def RenderNested(self, ctx: RenderCtx):
         if self.needParentheses:
             ctx.Write("(")
@@ -514,6 +521,10 @@ class Expression(SyntaxNode):
 
     def replicate(self, count: int) -> "ReplicationOperator":
         return ReplicationOperator(self, count, 1)
+
+
+    def cond(self, ifCase: "Expression | int", elseCase: "Expression | int") -> "ConditionalExpr":
+        return ConditionalExpr(self, ifCase, elseCase, 1)
 
 
 class Const(Expression):
@@ -767,7 +778,7 @@ class ConcatExpr(Expression):
             elif isinstance(e, int):
                 yield Const(e, frameDepth=frameDepth + 1)
             else:
-                yield e
+                yield Expression._CheckType(e)
 
 
     def _CalculateSize(self):
@@ -825,7 +836,7 @@ class SliceExpr(Expression):
 
     def __init__(self, arg: Expression, index: int, size: int, frameDepth: int):
         super().__init__(frameDepth + 1)
-        self.arg = arg
+        self.arg = Expression._CheckType(arg)
         self.isLhs = self.arg.isLhs
         if self.arg.size is not None:
             self._CheckRange(index, size, self.arg.size)
@@ -888,11 +899,11 @@ class ArithmeticExpr(Expression):
                 if e.op == self.op:
                     yield from self._FlattenArithmeticExpr(e.args, frameDepth + 1)
                 else:
-                    yield e
+                    yield Expression._CheckType(e)
             elif isinstance(e, int):
                 yield Const(e, frameDepth=frameDepth + 1)
             else:
-                yield e
+                yield Expression._CheckType(e)
 
 
     def _CalculateSize(self):
@@ -943,11 +954,11 @@ class ComparisonExpr(Expression):
         super().__init__(frameDepth + 1)
         self.strValue = f"Cmp({op})"
         self.op = op
-        self.lhs = lhs
+        self.lhs = Expression._CheckType(lhs)
         if isinstance(rhs, int):
             self.rhs = Const(rhs, frameDepth=frameDepth + 1)
         else:
-            self.rhs = rhs
+            self.rhs = Expression._CheckType(rhs)
 
 
     def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
@@ -993,7 +1004,7 @@ class UnaryOperator(Expression):
         if isinstance(arg, int):
             self.arg = Const(arg, frameDepth=frameDepth + 1)
         else:
-            self.arg = arg
+            self.arg = Expression._CheckType(arg)
         self.size = self.arg.size
 
 
@@ -1025,7 +1036,7 @@ class ReplicationOperator(Expression):
     def __init__(self, arg: Expression, count: int, frameDepth: int):
         super().__init__(frameDepth + 1)
         self.strValue = f"Replicate({count})"
-        self.arg = arg
+        self.arg = Expression._CheckType(arg)
         self.count = count
         if self.arg.size is None:
             raise ParseException(f"Replication operand should have size bound: {arg}")
@@ -1045,8 +1056,40 @@ class ReplicationOperator(Expression):
 
 
 class ConditionalExpr(Expression):
-    #XXX
-    pass
+    condition: Expression
+    ifCase: Expression
+    elseCase: Expression
+    needParentheses = True
+
+
+    def __init__(self, condition: Expression, ifCase: Expression | int, elseCase: Expression | int,
+                 frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.condition = Expression._CheckType(condition)
+        if isinstance(ifCase, int):
+            self.ifCase = Const(ifCase, frameDepth=frameDepth + 1)
+        else:
+            self.ifCase = Expression._CheckType(ifCase)
+        if isinstance(elseCase, int):
+            self.elseCase = Const(elseCase, frameDepth=frameDepth + 1)
+        else:
+            self.elseCase = Expression._CheckType(elseCase)
+        if self.ifCase.size is not None and self.elseCase.size is not None:
+            self.size = self.ifCase.size if self.ifCase.size >= self.elseCase.size else self.elseCase.size
+
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield self.condition
+        yield self.ifCase
+        yield self.elseCase
+
+
+    def Render(self, ctx: RenderCtx):
+        self.condition.RenderNested(ctx)
+        ctx.Write(" ? ")
+        self.ifCase.RenderNested(ctx)
+        ctx.Write(" : ")
+        self.elseCase.RenderNested(ctx)
 
 
 class Statement(SyntaxNode):
@@ -1093,8 +1136,8 @@ class AssignmentStatement(Statement):
         super().__init__(frameDepth + 1)
         if isinstance(rhs, int):
             rhs = Const(rhs, frameDepth=frameDepth + 1)
-        self.lhs = lhs
-        self.rhs= rhs
+        self.lhs = Expression._CheckType(lhs)
+        self.rhs= Expression._CheckType(rhs)
         self.isBlocking = isBlocking
         self.isProceduralBlock = CompileCtx.Current().isProceduralBlock
         lhs._Wire(True, frameDepth + 1)
