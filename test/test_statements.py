@@ -2,7 +2,7 @@ from pathlib import Path
 import unittest
 
 from GateForge.core import CompileCtx, ParseException, RenderCtx
-from GateForge.dsl import always, const, reg, wire
+from GateForge.dsl import _else, _elseif, _if, always, const, reg, wire
 
 
 class TestBase(unittest.TestCase):
@@ -236,6 +236,150 @@ end
         with self.assertRaises(ParseException):
             with always(w1.posedge | w2.negedge | w3):
                 pass
+
+
+    def test_if_statement(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+        w2 = wire("w2")
+        with always():
+            with _if(w1 == w2):
+                r <<= 4
+        self.CheckResult("""
+always @* begin
+    if (w1 == w2) begin
+        r <= 'h4;
+    end
+end
+""".lstrip())
+
+
+    def test_if_else_statement(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+        w2 = wire("w2")
+        with always():
+            with _if(w1 == w2):
+                r <<= 4
+            with _else():
+                r <<= 3
+        self.CheckResult("""
+always @* begin
+    if (w1 == w2) begin
+        r <= 'h4;
+    end else begin
+        r <= 'h3;
+    end
+end
+""".lstrip())
+
+
+    def test_if_else_if_statement(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+        w2 = wire("w2")
+        with always():
+            with _if(w1 == w2):
+                r <<= 4
+            with _elseif(w1 > w2):
+                r <<= 3
+        self.CheckResult("""
+always @* begin
+    if (w1 == w2) begin
+        r <= 'h4;
+    end else if (w1 > w2) begin
+        r <= 'h3;
+    end
+end
+""".lstrip())
+
+
+    def test_if_else_if_else_statement(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+        w2 = wire("w2")
+        with always():
+            with _if(w1 == w2):
+                r <<= 4
+            with _elseif(w1 > w2):
+                r <<= 3
+            with _else():
+                r <<= 5
+        self.CheckResult("""
+always @* begin
+    if (w1 == w2) begin
+        r <= 'h4;
+    end else if (w1 > w2) begin
+        r <= 'h3;
+    end else begin
+        r <= 'h5;
+    end
+end
+""".lstrip())
+
+
+    def test_if_else_if_else_nested_statement(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+        w2 = wire("w2")
+        with always():
+            with _if(w1 == w2):
+                r <<= 4
+            with _elseif(w1 > w2):
+                with _if(w1 == 1):
+                    r <<= 3
+                with _else():
+                    r <<= 6
+            with _else():
+                r <<= 5
+        self.CheckResult("""
+always @* begin
+    if (w1 == w2) begin
+        r <= 'h4;
+    end else if (w1 > w2) begin
+        if (w1 == 'h1) begin
+            r <= 'h3;
+        end else begin
+            r <= 'h6;
+        end
+    end else begin
+        r <= 'h5;
+    end
+end
+""".lstrip())
+
+
+    def test_if_statement_not_in_procedural_block(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+        w2 = wire("w2")
+        with self.assertRaises(ParseException):
+            with _if(w1 == w2):
+                r <<= 4
+
+
+    def test_if_statement_else_no_match(self):
+        r = reg(8, "r")
+        with self.assertRaises(ParseException):
+            with _else():
+                r <<= 4
+
+
+    def test_if_statement_else_if_no_match(self):
+        r = reg(8, "r")
+        with self.assertRaises(ParseException):
+            with _elseif(r > 0):
+                r <<= 4
+
+
+    def test_if_statement_else_no_match_2(self):
+        r = reg(8, "r")
+        with self.assertRaises(ParseException):
+            with _if(r > 0):
+                r <<= 1
+            r <<= 2
+            with _else():
+                r <<= 4
 
 
 if __name__ == "__main__":

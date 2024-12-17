@@ -423,13 +423,15 @@ class Expression(SyntaxNode):
             ctx.Write(")")
 
 
-    def __ilshift__(self, rhs: "Expression | int"):
+    def __ilshift__(self, rhs: "Expression | int") -> "Expression":
         AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
+        return self
 
 
-    def __ifloordiv__(self, rhs: "Expression | int"):
+    def __ifloordiv__(self, rhs: "Expression | int") -> "Expression":
         AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
-
+        return self
+    
 
     def assign(self, rhs: "Expression | int"):
         AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
@@ -1099,8 +1101,6 @@ class Statement(SyntaxNode):
         if not deferPush:
             CompileCtx.Current().PushStatement(self)
 
-    #XXX
-
 
 class Block(SyntaxNode):
     _statements: List[Statement]
@@ -1117,6 +1117,13 @@ class Block(SyntaxNode):
 
     def PushStatement(self, stmt: Statement):
         self._statements.append(stmt)
+
+
+    @property
+    def lastStatement(self) -> Statement:
+        if len(self._statements) == 0:
+            raise Exception("Expected non-empty statements list")
+        return self._statements[-1]
 
 
     def Render(self, ctx: RenderCtx):
@@ -1165,12 +1172,82 @@ class AssignmentStatement(Statement):
             ctx.Write(f"assign {ctx.RenderNested(self.lhs)} = {ctx.RenderNested(self.rhs)};")
 
 
+class IfContext:
+    stmt: "IfStatement"
+    # None for else clause
+    condition: Optional[Expression] = None
+    body: Block
+
+
+    def __init__(self, stmt: "IfStatement", condition: Optional[Expression]):
+        self.stmt = stmt
+        if condition is not None:
+            self.condition = Expression._CheckType(condition)
+
+
+    def __enter__(self):
+        if self.condition is not None:
+            self.condition._Wire(False, 1)
+        self.body = Block(1)
+        CompileCtx.Current().PushBlock(self.body)
+
+
+    def __exit__(self, excType, excValue, tb):
+        if CompileCtx.Current().PopBlock() is not self.body:
+            raise Exception("Unexpected block in stack")
+        if self.condition is not None:
+            self.stmt.conditions.append(self.condition)
+            self.stmt.blocks.append(self.body)
+        else:
+            if self.stmt.elseBlock is not None:
+                raise ParseException("More than one `else` clause specified")
+            self.stmt.elseBlock = self.body
+
+
 class IfStatement(Statement):
-    #XXX
-    pass
+    conditions: List[Expression]
+    blocks: List[Block]
+    elseBlock: Optional[Block] = None
+
+    def __init__(self, frameDepth):
+        super().__init__(frameDepth + 1)
+        compileCtx = CompileCtx.Current()
+        if not compileCtx.isProceduralBlock:
+            raise ParseException("`if` statement can only be used in a procedural block")
+        self.conditions = list()
+        self.blocks = list()
 
 
-class CaseStatement(Statement):
+    def _GetContext(self, condition: Optional[Expression]) -> IfContext:
+        return IfContext(self, condition)
+
+
+    def Render(self, ctx: RenderCtx):
+        assert len(self.conditions) > 0
+        assert len(self.conditions) == len(self.blocks)
+        isFirst = True
+        for condition, block in zip(self.conditions, self.blocks):
+            if isFirst:
+                isFirst = False
+                ctx.Write("if")
+            else:
+                ctx.WriteIndent(self.indent)
+                ctx.Write("end else if")
+            ctx.Write(" (")
+            condition.Render(ctx)
+            ctx.Write(") begin\n")
+            block.Render(ctx)
+
+        if self.elseBlock is not None:
+            ctx.WriteIndent(self.indent)
+            ctx.Write("end else begin\n")
+            self.elseBlock.Render(ctx)
+
+        ctx.WriteIndent(self.indent)
+        ctx.Write("end")
+
+
+class WhenStatement(Statement):
     #XXX
     pass
 

@@ -1,7 +1,7 @@
 import collections.abc
 from typing import List, Optional, Tuple, Type, cast
-from GateForge.core import ArithmeticExpr, ConditionalExpr, Const, Expression, Net, \
-    ParseException, ProceduralBlock, Reg, SensitivityList, Wire
+from GateForge.core import ArithmeticExpr, CompileCtx, ConditionalExpr, Const, Expression, \
+    IfContext, IfStatement, Net, ParseException, ProceduralBlock, Reg, SensitivityList, Wire
 
 
 def const(value: str | int, size: Optional[int] = None) -> Const:
@@ -57,3 +57,23 @@ def always(sensitivityList: SensitivityList | Net | ArithmeticExpr | None = None
 
 def cond(condition: Expression, ifCase: Expression | int, elseCase: Expression | int) -> ConditionalExpr:
     return ConditionalExpr(condition, ifCase, elseCase, 1)
+
+
+def _if(condition: Expression) -> IfContext:
+    return IfStatement(1)._GetContext(condition)
+
+
+def _elseif(condition: Expression) -> IfContext:
+    block = CompileCtx.Current().curBlock
+    stmt = block.lastStatement if len(block) > 0 else None
+    if not isinstance(stmt, IfStatement):
+        raise ParseException("No `if` statement to apply `else if` onto")
+    return stmt._GetContext(condition)
+
+
+def _else() -> IfContext:
+    block = CompileCtx.Current().curBlock
+    stmt = block.lastStatement if len(block) > 0 else None
+    if not isinstance(stmt, IfStatement):
+        raise ParseException("No `if` statement to apply `else` onto")
+    return stmt._GetContext(None)
