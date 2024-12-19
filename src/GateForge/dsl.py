@@ -1,7 +1,7 @@
 import collections.abc
 from typing import List, Optional, Tuple, Type, cast
-from GateForge.core import ArithmeticExpr, CompileCtx, ConditionalExpr, Const, Expression, \
-    IfContext, IfStatement, Net, ParseException, ProceduralBlock, Reg, SensitivityList, Wire
+from GateForge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, Expression, \
+    IfContext, IfStatement, Net, ParseException, ProceduralBlock, Reg, SensitivityList, WhenStatement, Wire
 
 
 def const(value: str | int, size: Optional[int] = None) -> Const:
@@ -67,7 +67,7 @@ def _elseif(condition: Expression) -> IfContext:
     block = CompileCtx.Current().curBlock
     stmt = block.lastStatement if len(block) > 0 else None
     if not isinstance(stmt, IfStatement):
-        raise ParseException("No `if` statement to apply `else if` onto")
+        raise ParseException("No `_if` statement to apply `_elseif` onto")
     return stmt._GetContext(condition)
 
 
@@ -75,5 +75,27 @@ def _else() -> IfContext:
     block = CompileCtx.Current().curBlock
     stmt = block.lastStatement if len(block) > 0 else None
     if not isinstance(stmt, IfStatement):
-        raise ParseException("No `if` statement to apply `else` onto")
+        raise ParseException("No `_if` statement to apply `_else` onto")
+    return stmt._GetContext(None)
+
+
+def _when(switch: Expression) -> WhenStatement:
+    return WhenStatement(switch, 1)
+
+
+def _case(condition: Expression) -> CaseContext:
+    ctx = CompileCtx.Current()
+    block = ctx._blockStack[-2] if len(ctx._blockStack) > 1 else None
+    stmt = block.lastStatement if block is not None and len(block) > 0 else None
+    if not isinstance(stmt, WhenStatement):
+        raise ParseException("No `_when` statement to apply `_case` onto")
+    return stmt._GetContext(condition)
+
+
+def _default() -> CaseContext:
+    ctx = CompileCtx.Current()
+    block = ctx._blockStack[-2] if len(ctx._blockStack) > 1 else None
+    stmt = block.lastStatement if block is not None and len(block) > 0 else None
+    if not isinstance(stmt, WhenStatement):
+        raise ParseException("No `_when` statement to apply `_default` onto")
     return stmt._GetContext(None)

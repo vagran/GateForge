@@ -431,7 +431,7 @@ class Expression(SyntaxNode):
     def __ifloordiv__(self, rhs: "Expression | int") -> "Expression":
         AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
         return self
-    
+
 
     def assign(self, rhs: "Expression | int"):
         AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
@@ -1200,7 +1200,7 @@ class IfContext:
             self.stmt.blocks.append(self.body)
         else:
             if self.stmt.elseBlock is not None:
-                raise ParseException("More than one `else` clause specified")
+                raise ParseException("More than one `_else` clause specified")
             self.stmt.elseBlock = self.body
 
 
@@ -1208,6 +1208,7 @@ class IfStatement(Statement):
     conditions: List[Expression]
     blocks: List[Block]
     elseBlock: Optional[Block] = None
+
 
     def __init__(self, frameDepth):
         super().__init__(frameDepth + 1)
@@ -1247,9 +1248,101 @@ class IfStatement(Statement):
         ctx.Write("end")
 
 
+class CaseContext:
+    stmt: "WhenStatement"
+    # None for default case
+    condition: Optional[Expression] = None
+    body: Block
+
+
+    def __init__(self, stmt: "WhenStatement", condition: Optional[Expression]):
+        self.stmt = stmt
+        if condition is not None:
+            self.condition = Expression._CheckType(condition)
+
+
+    def __enter__(self):
+        if self.condition is not None:
+            self.condition._Wire(False, 1)
+        self.body = Block(1)
+        CompileCtx.Current().PushBlock(self.body)
+
+
+    def __exit__(self, excType, excValue, tb):
+        if CompileCtx.Current().PopBlock() is not self.body:
+            raise Exception("Unexpected block in stack")
+        if self.condition is not None:
+            self.stmt.conditions.append(self.condition)
+            self.stmt.blocks.append(self.body)
+        else:
+            if self.stmt.defaultBlock is not None:
+                raise ParseException("More than one `_default` case specified")
+            self.stmt.defaultBlock = self.body
+
+
 class WhenStatement(Statement):
-    #XXX
-    pass
+    switch: Expression
+    conditions: List[Expression]
+    blocks: List[Block]
+    defaultBlock: Optional[Block] = None
+    # Catches any statements inside `when` body. There should be nothing in normal case.
+    dummyBlock: Block
+
+
+    def __init__(self, switch: Expression, frameDepth):
+        super().__init__(frameDepth + 1)
+        compileCtx = CompileCtx.Current()
+        if not compileCtx.isProceduralBlock:
+            raise ParseException("`when` statement can only be used in a procedural block")
+        self.switch = Expression._CheckType(switch)
+        self.conditions = list()
+        self.blocks = list()
+
+
+    def _GetContext(self, condition: Optional[Expression]) -> CaseContext:
+        return CaseContext(self, condition)
+
+
+    def __enter__(self):
+        self.switch._Wire(False, 1)
+        self.dummyBlock = Block(1)
+        CompileCtx.Current().PushBlock(self.dummyBlock)
+
+
+    def __exit__(self, excType, excValue, tb):
+        ctx = CompileCtx.Current()
+        if ctx.PopBlock() is not self.dummyBlock:
+            raise Exception("Unexpected current block")
+        if len(self.dummyBlock) > 0:
+            raise ParseException(
+                "No synthesizable code other than `_case` and `_default` blocks allowed in "
+                f"`_when` statement, has {self.dummyBlock._statements[0]}")
+
+
+    def Render(self, ctx: RenderCtx):
+        assert len(self.conditions) == len(self.blocks)
+        ctx.Write("case (")
+        self.switch.Render(ctx)
+        ctx.Write(")\n")
+
+        for condition, block in zip(self.conditions, self.blocks):
+            ctx.WriteIndent(self.indent + 1)
+            condition.Render(ctx)
+            ctx.Write(": begin\n")
+            block.Render(ctx)
+            ctx.WriteIndent(self.indent + 1)
+            ctx.Write("end\n")
+
+        if self.defaultBlock is not None:
+            ctx.WriteIndent(self.indent + 1)
+            ctx.Write("default: begin\n")
+            self.defaultBlock.Render(ctx)
+            ctx.WriteIndent(self.indent + 1)
+            ctx.Write("end\n")
+
+        ctx.WriteIndent(self.indent)
+        ctx.Write("endcase")
+
 
 
 class EdgeTrigger(SyntaxNode):

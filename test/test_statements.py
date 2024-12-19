@@ -2,7 +2,7 @@ from pathlib import Path
 import unittest
 
 from GateForge.core import CompileCtx, ParseException, RenderCtx
-from GateForge.dsl import _else, _elseif, _if, always, const, reg, wire
+from GateForge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, reg, wire
 
 
 class TestBase(unittest.TestCase):
@@ -380,6 +380,50 @@ end
             r <<= 2
             with _else():
                 r <<= 4
+
+
+    def test_when_statement(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+        w2 = wire("w2")
+
+        with always():
+            with _when(r):
+                with _case(w1 % w2 % const(0, 6)):
+                    r <<= 1
+                with _case(w1 % const(0, 7)):
+                    r <<= 2
+                with _default():
+                    r <<= 3
+
+        self.CheckResult("""
+always @* begin
+    case (r)
+        {w1, w2, 6'h0}: begin
+            r <= 'h1;
+        end
+        {w1, 7'h0}: begin
+            r <= 'h2;
+        end
+        default: begin
+            r <= 'h3;
+        end
+    endcase
+end
+""".lstrip())
+
+
+
+    # XXX when no procedural
+
+    # XXX empty when
+
+
+    # XXX unexpected code in when
+
+    # XXX case size mismatch warning
+
+    #XXX more than one default
 
 
 if __name__ == "__main__":
