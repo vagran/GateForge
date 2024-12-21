@@ -443,14 +443,62 @@ always @* begin
 end
 """.lstrip(), 1)
 
-    # XXX when no procedural
 
-    # XXX empty when
+    def test_when_no_procedural_block(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+        w2 = wire("w2")
+
+        with self.assertRaises(ParseException):
+            with _when(r):
+                with _case(w1 % w2 % const(0, 6)):
+                    r <<= 1
+                with _case(w1 % const(0, 7)):
+                    r <<= 2
+                with _default():
+                    r <<= 3
 
 
-    # XXX unexpected code in when
+    def test_empty_when(self):
+        r = reg(8, "r")
+        with always():
+            with _when(r):
+                pass
+        self.CheckResult("""
+always @* begin
+    case (r)
+    endcase
+end
+""".lstrip(), 1)
 
-    #XXX more than one default
+
+    def test_when_unexpected_code(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+
+        with self.assertRaises(ParseException):
+            with always():
+                with _when(r):
+                    with _case(w1 % const(0, 7)):
+                        r <<= 2
+                    r <<= 1
+                    with _default():
+                        r <<= 3
+
+
+    def test_when_multiple_default(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+
+        with self.assertRaises(ParseException):
+            with always():
+                with _when(r):
+                    with _case(w1 % const(0, 7)):
+                        r <<= 2
+                    with _default():
+                        r <<= 3
+                    with _default():
+                        r <<= 4
 
 
 if __name__ == "__main__":

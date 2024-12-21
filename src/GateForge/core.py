@@ -1278,7 +1278,7 @@ class CaseContext:
             self.stmt.blocks.append(self.body)
         else:
             if self.stmt.defaultBlock is not None:
-                raise ParseException("More than one `_default` case specified")
+                raise ParseException("More than one `_default` case specified for `_when` statement")
             self.stmt.defaultBlock = self.body
 
 
@@ -1319,6 +1319,8 @@ class WhenStatement(Statement):
             raise ParseException(
                 "No synthesizable code other than `_case` and `_default` blocks allowed in "
                 f"`_when` statement, has {self.dummyBlock._statements[0]}")
+        if len(self.conditions) == 0:
+            ctx.Warning("No cases in `_when` statement")
         self._CheckSize()
 
 
