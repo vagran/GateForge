@@ -1,3 +1,4 @@
+import io
 import unittest
 
 from GateForge.core import CompileCtx, Expression, ParseException, RenderCtx
@@ -20,7 +21,10 @@ class TestBase(unittest.TestCase):
     def CheckExpr(self, expr: Expression, expected: str, expectedWarnings = 0):
         # Check source is in current file
         self.assertEqual(Path(expr.srcFrame.filename).name, "test_expressions.py")
-        self.assertEqual(self.ctx.RenderNested(expr), expected)
+        with io.StringIO() as output:
+            expr.Render(self.ctx.CreateNested(output))
+            result = output.getvalue()
+        self.assertEqual(result, expected)
         self.assertEqual(len(self.compileCtx.GetWarnings()), expectedWarnings)
 
 

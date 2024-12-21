@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 import unittest
 
@@ -21,7 +22,10 @@ class TestBase(unittest.TestCase):
         stmt = self.compileCtx.curBlock._statements[-1]
         # Check source is in current file
         self.assertEqual(Path(stmt.srcFrame.filename).name, "test_statements.py")
-        self.assertEqual(self.ctx.RenderNested(stmt), expected)
+        with io.StringIO() as output:
+            stmt.Render(self.ctx.CreateNested(output))
+            result = output.getvalue()
+        self.assertEqual(result, expected)
         self.assertEqual(len(self.compileCtx.GetWarnings()), expectedWarnings)
 
 

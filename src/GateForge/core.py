@@ -271,14 +271,6 @@ class RenderCtx:
         return ctx
 
 
-    #XXX remove
-    def RenderNested(self, node: "SyntaxNode") -> str:
-        with io.StringIO() as output:
-            ctx = self.CreateNested(output)
-            node.Render(ctx)
-            return output.getvalue()
-
-
     def Write(self, s: str):
         self.output.write(s)
 
@@ -1169,9 +1161,15 @@ class AssignmentStatement(Statement):
     def Render(self, ctx: RenderCtx):
         if self.isProceduralBlock:
             op = "=" if self.isBlocking else "<="
-            ctx.Write(f"{ctx.RenderNested(self.lhs)} {op} {ctx.RenderNested(self.rhs)};")
+            self.lhs.Render(ctx)
+            ctx.Write(f" {op} ")
+            self.rhs.Render(ctx)
         else:
-            ctx.Write(f"assign {ctx.RenderNested(self.lhs)} = {ctx.RenderNested(self.rhs)};")
+            ctx.Write("assign ")
+            self.lhs.Render(ctx)
+            ctx.Write(" = ")
+            self.rhs.Render(ctx)
+        ctx.Write(";")
 
 
 class IfContext:
