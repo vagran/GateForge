@@ -137,6 +137,15 @@ class Concat(TestBase):
             self.CheckExpr(w1 % w2 % 5, "")
         self.CheckExpr(w1 % const(5, 3) % w3, "{w1, 3'h5, w3}")
 
+        self.assertEqual((w1 % w2).size, 9)
+        self.assertEqual((w1 % w2 % w3).size, 10)
+        self.assertEqual((w1 % w2 % w3 % w4).size, 11)
+
+        e = const(5) % w1
+        self.assertIsNone(e.size)
+        self.assertEqual(e.valueSize, 4)
+        with self.assertRaises(ParseException):
+            w1 % 5
 
 
 class Arithmetic(TestBase):

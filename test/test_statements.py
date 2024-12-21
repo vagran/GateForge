@@ -413,6 +413,35 @@ end
 """.lstrip())
 
 
+    def test_when_case_size_mismatch(self):
+        r = reg(8, "r")
+        w1 = wire("w1")
+        w2 = wire("w2")
+
+        with always():
+            with _when(r):
+                with _case(w1 % w2 % const(0, 5)):
+                    r <<= 1
+                with _case(w1 % const(0, 7)):
+                    r <<= 2
+                with _default():
+                    r <<= 3
+
+        self.CheckResult("""
+always @* begin
+    case (r)
+        {w1, w2, 5'h0}: begin
+            r <= 'h1;
+        end
+        {w1, 7'h0}: begin
+            r <= 'h2;
+        end
+        default: begin
+            r <= 'h3;
+        end
+    endcase
+end
+""".lstrip(), 1)
 
     # XXX when no procedural
 
@@ -420,8 +449,6 @@ end
 
 
     # XXX unexpected code in when
-
-    # XXX case size mismatch warning
 
     #XXX more than one default
 

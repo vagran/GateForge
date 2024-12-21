@@ -587,6 +587,7 @@ class Const(Expression):
             # For non-negative numbers, just calculate the bits needed
             return math.floor(math.log2(x)) + 1
 
+
     @staticmethod
     def _ParseStringValue(valueStr: str) -> Tuple[int, Optional[int]]:
         """
@@ -797,15 +798,16 @@ class ConcatExpr(Expression):
                         valueSize = e.valueSize
                     else:
                         valueSize = None
+                    continue
             else:
                 if e.size is None:
                     raise ParseException(
                         "Concatenation can have expression with unbound size on left-most position"
                          f" only, unbound expression: {e}")
-                if size is not None:
-                    size += e.size
-                    if valueSize is not None:
-                        valueSize += e.size
+            if size is not None:
+                size += e.size
+            if valueSize is not None:
+                valueSize += e.size
             if not e.isLhs:
                 isLhs = False
         self.size = size
@@ -1317,6 +1319,7 @@ class WhenStatement(Statement):
             raise ParseException(
                 "No synthesizable code other than `_case` and `_default` blocks allowed in "
                 f"`_when` statement, has {self.dummyBlock._statements[0]}")
+        self._CheckSize()
 
 
     def Render(self, ctx: RenderCtx):
@@ -1343,6 +1346,15 @@ class WhenStatement(Statement):
         ctx.WriteIndent(self.indent)
         ctx.Write("endcase")
 
+
+    def _CheckSize(self):
+        size = self.switch.size
+        if size is None:
+            return
+        ctx = CompileCtx.Current()
+        for e in self.conditions:
+            if e.size is not None and e.size != size:
+                ctx.Warning(f"'`_when` expression size mismatch: {size} != {e.size} ({e})")
 
 
 class EdgeTrigger(SyntaxNode):
