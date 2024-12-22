@@ -363,7 +363,7 @@ class Expression(SyntaxNode):
     # affect the produced output, however, may be used, for example, to define external module ports.
     isWired: bool = False
     wiringFrame: traceback.FrameSummary
-    wireable: bool = True
+    nonWireableReason: Optional[str] = None
     needParentheses: bool = False
 
 
@@ -410,8 +410,8 @@ class Expression(SyntaxNode):
         Wire the expression.
         :return: True if wired, false if already was wired earlier.
         """
-        if not self.wireable:
-            raise ParseException(f"Expression wiring prohibited: {self}")
+        if self.nonWireableReason is not None:
+            raise ParseException(f"Expression wiring prohibited: {self} - {self.nonWireableReason}")
         if isLhs and not self.isLhs:
             raise ParseException(
                 "Attempting to wire RHS expression as LHS, assignment target cannot be written to\n" +
@@ -660,6 +660,7 @@ class Const(Expression):
 
 
 class Net(Expression):
+    size: int
     isLhs = True
     baseIndex: int = 0
     isReg: bool
@@ -697,8 +698,13 @@ class Net(Expression):
         return SliceExpr(self, index - self.baseIndex, size, 1)
 
 
+    @property
+    def effectiveName(self):
+        return self.name if self.isWired else self.initialName
+
+
     def Render(self, ctx: RenderCtx):
-        name = self.name if self.isWired else self.initialName
+        name = self.effectiveName
         if name is None:
             raise Exception("Cannot render unwired unnamed net")
         if ctx.renderDecl:
@@ -724,13 +730,13 @@ class Net(Expression):
 
 
     @property
-    def input(self) -> "Port":
-        return Port(self, False, 1)
+    def input(self) -> "NetProxy":
+        return NetProxy(self, False, 1)
 
 
     @property
-    def output(self) -> "Port":
-        return Port(self, True, 1)
+    def output(self) -> "NetProxy":
+        return NetProxy(self, True, 1)
 
 
     @property
@@ -752,7 +758,7 @@ class Reg(Net):
     isReg = True
 
 
-class Port(Net):
+class NetProxy(Net):
     src: Net
     isOutput: bool
 
@@ -760,25 +766,94 @@ class Port(Net):
     def __init__(self, src: Net, isOutput: bool, frameDepth: int):
         if not isinstance(src, Net):
             raise ParseException(f"Net type expected, has `{type(src).__name__}`")
+        self.isOutput = isOutput
+        super().__init__(size=src.size, baseIndex=src.baseIndex, isReg=src.isReg,
+                         name=src.initialName, frameDepth=frameDepth + 1)
+        self.src = src
+        self.isLhs = isOutput
+
+
+    @property
+    def name(self):
+        return self.src.name
+
+
+    @property
+    def strValue(self):
+        name = self.effectiveName
+        result = "Output" if self.isOutput else "Input"
+        result += "Reg" if self.isReg else "Wire"
+        if name is None:
+            return result
+        return f"{result}(`{name}`)"
+
+    @strValue.setter
+    def strValue(self, value):
+        # Ignore setting in base constructor
+        pass
+
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield self.src
+
+
+    def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
+        # Skip Net._Wire() implementation since `name` handling should be done in proxied object
+        # only.
+        return Expression._Wire(self, isLhs, frameDepth + 1)
+
+
+    @property
+    def input(self) -> "NetProxy":
+        if self.isOutput:
+            return NetProxy(self.src, False, 1)
+        return self
+
+
+    @property
+    def output(self) -> "NetProxy":
+        if self.isOutput:
+            return self
+        raise ParseException(f"Cannot use input net as output: {self}")
+
+
+    @property
+    def port(self) -> "Port":
+        return Port(self, 1)
+
+
+class Port(Net):
+    src: NetProxy
+    isOutput: bool
+
+
+    def __init__(self, src: NetProxy, frameDepth: int):
+        if not isinstance(src, NetProxy):
+            raise ParseException(f"NetProxy type expected, has `{type(src).__name__}`")
+        if isinstance(src.src, Port):
+            raise ParseException(f"Cannot take port from port: {src.src}")
         if src.size is None:
             raise ParseException("Port cannot be created from unsized net")
         if src.initialName is None:
             raise ParseException("Port cannot be created from unnamed net")
-        if src.isWired:
+        if src.src.isWired:
             raise ParseException("Port cannot be created from wired net, wired at " +
-                                 SyntaxNode.GetFullLocation(src.wiringFrame))
-        src.wireable = False
+                                 SyntaxNode.GetFullLocation(src.src.wiringFrame))
         # Input is always wire, output is always reg. Reg is optimized to wire anyway by a
         # synthesis tool if used in combination logic only, but allows using freely it in sequential
         # logic if needed.
-        super().__init__(size=src.size, baseIndex=src.baseIndex, isReg=isOutput,
+        super().__init__(size=src.size, baseIndex=src.baseIndex, isReg=src.isOutput,
                          name=src.initialName, frameDepth=frameDepth + 1)
         self.src = src
-        self.isLhs = isOutput
-        self.isOutput = isOutput
-        self.initialName = src.initialName
+        self.isLhs = src.isOutput
+        self.isOutput = src.isOutput
+        # Resolved name should be identical to the specified one. Conflict, if any, will be detected
+        # on wiring.
         self.name = src.initialName
-        self.strValue = f"{'Output' if isOutput else 'Input'}(`{self.name}`)"
+        # Source is absorbed and should never be wired.
+        src.nonWireableReason = f"Used as port at {SyntaxNode.GetFullLocation(self.srcFrame)}"
+        src.src.nonWireableReason = src.nonWireableReason
+        self.strValue = f"{'Output' if self.isOutput else 'Input'}(`{self.name}`)"
 
 
     # Treating source Net as absorbed so it is not enumerated as child.
@@ -786,11 +861,23 @@ class Port(Net):
 
     def Render(self, ctx: RenderCtx):
         if ctx.renderDecl:
-            ctx.Write("output" if self.isOutput else "input")
+            ctx.Write("output" if self.src.isOutput else "input")
             ctx.Write(" ")
             super().Render(ctx)
         else:
             super().Render(ctx)
+
+
+    @property
+    def input(self) -> "NetProxy":
+        return NetProxy(self, False, 1)
+
+
+    @property
+    def output(self) -> "NetProxy":
+        if not self.isOutput:
+            raise ParseException(f"Cannot use input port as output: {self}")
+        return NetProxy(self, True, 1)
 
 
 class ConcatExpr(Expression):
@@ -1553,10 +1640,10 @@ class ProceduralBlock(Statement):
 
 class Module(SyntaxNode):
     name: str
-    ports: dict[str, Port]
+    ports: dict[str, NetProxy]
 
 
-    def __init__(self, name: str, ports: dict[str, Port], frameDepth: int):
+    def __init__(self, name: str, ports: dict[str, NetProxy], frameDepth: int):
         super().__init__(frameDepth + 1)
         self.name = name
         self.strValue = f"Module(`{name})`"
@@ -1564,11 +1651,12 @@ class Module(SyntaxNode):
         if len(ports) == 0:
             raise ParseException("No ports specified for a module declaration")
         for port in ports.values():
-            if port.isWired:
+            if port.src.isWired:
                 raise ParseException(
-                    "Module ports should not be used in any synthesizable code, "
-                    f"port {port} has been wired at {SyntaxNode.GetFullLocation(port.wiringFrame)}")
-            port.wireable = False
+                    "Module declaration ports should not be used in any synthesizable code, "
+                    f"port {port} has been wired at {SyntaxNode.GetFullLocation(port.src.wiringFrame)}")
+            port.nonWireableReason = f"Used as module declaration port at {SyntaxNode.GetFullLocation(self.srcFrame)}"
+            port.src.nonWireableReason = port.nonWireableReason
         CompileCtx.Current().RegisterModule(self)
 
 

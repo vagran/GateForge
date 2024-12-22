@@ -4,11 +4,11 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Run master node",
+            "label": "Run main",
             "command": "${workspaceFolder}/.venv/bin/python",
-            "args": ["-m", "MasterNode.Main", "--config", "master_node_config.yaml"],
+            "args": ["-m", "GateForge", "-h"],
             "options": {
-                "cwd": "${workspaceFolder}/workspace/master_node",
+                "cwd": "${workspaceFolder}/tmp",
                 "env": {
                     "PYTHONPATH": "${workspaceFolder}/src",
                     "PYTHONUNBUFFERED": "1"

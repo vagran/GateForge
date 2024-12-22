@@ -21,8 +21,25 @@ class Test(TestBase):
     def test_single_in_out(self):
 
         def TestModule():
-            _in = wire("in").input
-            _out = reg("out").output
+            _in = wire("in").input.port
+            _out = reg("out").output.port
+
+            _out <<= _in
+
+        self.CheckResult(TestModule, """
+module TestModule(
+    input wire in,
+    output reg out);
+
+assign out = in;
+endmodule
+""".lstrip())
+
+    def test_chained_proxy(self):
+
+        def TestModule():
+            _in = wire("in").input.port.input.input
+            _out = reg("out").output.port.output.output
 
             _out <<= _in
 
@@ -39,8 +56,8 @@ endmodule
     def test_duplicate_port_name(self):
 
         def TestModule():
-            _in = wire("a").input
-            _out = reg("a").output
+            _in = wire("a").input.port
+            _out = reg("a").output.port
 
             _out <<= _in
 
@@ -48,11 +65,34 @@ endmodule
             CompileModuleToString(TestModule)
 
 
+    def test_input_port_as_output(self):
+
+        def TestModule():
+            _in = wire("a").input.port
+
+            _in.output <<= 1
+
+        with self.assertRaises(ParseException):
+            CompileModuleToString(TestModule)
+
+
+    def test_port_from_port(self):
+
+        def TestModule():
+            _out = wire("a").output.port
+
+            w = wire("w")
+            w <<= _out.input.port
+
+        with self.assertRaises(ParseException):
+            print(CompileModuleToString(TestModule))
+
+
     def test_port_wire_name_collision(self):
 
         def TestModule():
-            _in = wire("in").input
-            _out = reg("out").output
+            _in = wire("in").input.port
+            _out = reg("out").output.port
             r = reg("in")
             w = wire("out")
 
@@ -75,8 +115,8 @@ endmodule
     def test_module_name(self):
 
         def TestModule():
-            _in = wire("in").input
-            _out = reg("out").output
+            _in = wire("in").input.port
+            _out = reg("out").output.port
 
             _out <<= _in
 
@@ -93,11 +133,11 @@ endmodule
     def test_different_size_comparison(self):
 
         def TestModule():
-            w1 = wire("w1").output
-            w2 = wire("w2").input
-            w3 = wire("w3").input
-            w4 = wire("w4").output
-            w5 = wire(8, "w5").input
+            w1 = wire("w1").output.port
+            w2 = wire("w2").input.port
+            w3 = wire("w3").input.port
+            w4 = wire("w4").output.port
+            w5 = wire(8, "w5").input.port
             w1 <<= w2 == w3
             w4 <<= w2 == w5
 

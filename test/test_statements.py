@@ -83,6 +83,12 @@ class Test(TestBase):
             c <<= 42
 
 
+    def test_continuous_assignment_lhs_input(self):
+        r = reg(8).input
+        with self.assertRaises(ParseException):
+            r <<= 42
+
+
     def test_continuous_assignment_lhs_const_slice(self):
         c = const(2)
         with self.assertRaises(ParseException):
@@ -541,7 +547,7 @@ MyModule MyModule_0(
         a = wire("a")
         a <<= 1
         with self.assertRaises(ParseException):
-            a.input
+            a.input.port
 
 
     def test_wired_port(self):
@@ -576,6 +582,15 @@ MyModule MyModule_0(
                    wire("b").output)
         with self.assertRaises(ParseException):
             m(a=w, b=1)
+
+
+    def test_bad_lhs_input(self):
+        w = wire("w")
+        m = module("MyModule",
+                   wire("a").input,
+                   wire("b").output)
+        with self.assertRaises(ParseException):
+            m(a=w, b=w.input)
 
 
     def test_size_mismatch(self):

@@ -1,8 +1,8 @@
 import collections.abc
 from typing import List, Optional, Tuple, Type, cast
 from GateForge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, \
-    Expression, IfContext, IfStatement, Module, Net, ParseException, Port, ProceduralBlock, Reg, \
-    SensitivityList, WhenStatement, Wire
+    Expression, IfContext, IfStatement, Module, Net, NetProxy, ParseException, ProceduralBlock, \
+    Reg, SensitivityList, WhenStatement, Wire
 
 
 def const(value: str | int, size: Optional[int] = None) -> Const:
@@ -102,14 +102,16 @@ def _default() -> CaseContext:
     return stmt._GetContext(None)
 
 
-def module(moduleName: str, *args: Port) -> Module:
-    ports: dict[str, Port] = dict()
+def module(moduleName: str, *args: NetProxy) -> Module:
+    ports: dict[str, NetProxy] = dict()
 
     for port in args:
-        if not isinstance(port, Port):
-            raise ParseException(f"Port instance expected, has `{type(port).__name__}`")
-        if port.name in ports:
-            raise ParseException(f"Duplicate port name in a module declaration: `{port.name}`")
-        ports[port.name] = port
+        if not isinstance(port, NetProxy):
+            raise ParseException(f"NetProxy instance expected, has `{type(port).__name__}`")
+        if port.initialName is None:
+            raise ParseException(f"Unnamed net cannot be used as module port in a declaration, {port}")
+        if port.initialName in ports:
+            raise ParseException(f"Duplicate port name in a module declaration: `{port.initialName}`")
+        ports[port.initialName] = port
 
     return Module(moduleName, ports, 1)

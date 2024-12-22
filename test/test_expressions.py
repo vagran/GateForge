@@ -95,6 +95,8 @@ class Slice(TestBase):
     def test_basic(self):
         self.CheckExpr(wire(8, "w")[0], "w[0]")
         self.CheckExpr(wire(8, "w")[3], "w[3]")
+        self.CheckExpr(wire(8, "w").input[3], "w[3]")
+        self.CheckExpr(wire(8, "w").output[3], "w[3]")
         self.CheckExpr(wire(8, "w")[5:2], "w[5:2]")
         self.CheckExpr(wire((15, 8), "w")[8], "w[8]")
         self.CheckExpr(wire((15, 8), "w")[15:8], "w[15:8]")
