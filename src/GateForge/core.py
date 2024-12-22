@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from io import TextIOBase
 import io
 import threading
@@ -91,16 +92,20 @@ class CompileCtx:
 
     _threadLocal = threading.local()
     _curNetIdx: int
+    _curModuleIdx: int
     _nets: dict[str, "Net"]
     _ports: dict[str, "Port"]
+    _modules: dict[str, "Module"]
     _blockStack: List["Block"]
     _warnings: List[WarningMsg]
 
 
     def __init__(self, moduleName: str):
         self._curNetIdx = 0
+        self._curModuleIdx = 0
         self._nets = dict()
         self._ports = dict()
+        self._modules = dict()
         self._blockStack = list()
         self._warnings = list()
         self.moduleName = moduleName
@@ -163,7 +168,17 @@ class CompileCtx:
             idx = self._curNetIdx
             self._curNetIdx += 1
             name = f"{namePrefix}_{idx}"
-            if name in self._nets:
+            if name in self._nets or name in self._modules:
+                continue
+            return name
+
+
+    def GenerateModuleInstanceName(self, moduleName: str) -> str:
+        while True:
+            idx = self._curModuleIdx
+            self._curModuleIdx += 1
+            name = f"{moduleName}_{idx}"
+            if name in self._nets or name in self._modules:
                 continue
             return name
 
@@ -177,6 +192,14 @@ class CompileCtx:
         self._nets[net.name] = net
         if isinstance(net, Port):
             self._ports[net.name] = net
+
+
+    def RegisterModule(self, module: "Module"):
+        existing = self._modules.get(module.name, None)
+        if existing is not None:
+            raise ParseException(
+                f"Module with name `{module.name}` already declared at {existing.fullLocation}")
+        self._modules[module.name] = module
 
 
     def PushStatement(self, stmt: "Statement"):
@@ -295,14 +318,24 @@ class SyntaxNode:
         self.indent = ctx.indent
 
 
+    @staticmethod
+    def GetLocation(frame: traceback.FrameSummary) -> str:
+        return f"{Path(frame.filename).name}:{frame.lineno}"
+
+
+    @staticmethod
+    def GetFullLocation(frame: traceback.FrameSummary) -> str:
+        return f"{frame.filename}:{frame.lineno}"
+
+
     @property
     def location(self) -> str:
-        return f"{Path(self.srcFrame.filename).name}:{self.srcFrame.lineno}"
+        return SyntaxNode.GetLocation(self.srcFrame)
 
 
     @property
     def fullLocation(self) -> str:
-        return f"{self.srcFrame.filename}:{self.srcFrame.lineno}"
+        return SyntaxNode.GetFullLocation(self.srcFrame)
 
 
     def __str__(self) -> str:
@@ -330,6 +363,7 @@ class Expression(SyntaxNode):
     # affect the produced output, however, may be used, for example, to define external module ports.
     isWired: bool = False
     wiringFrame: traceback.FrameSummary
+    wireable: bool = True
     needParentheses: bool = False
 
 
@@ -376,6 +410,8 @@ class Expression(SyntaxNode):
         Wire the expression.
         :return: True if wired, false if already was wired earlier.
         """
+        if not self.wireable:
+            raise ParseException(f"Expression wiring prohibited: {self}")
         if isLhs and not self.isLhs:
             raise ParseException(
                 "Attempting to wire RHS expression as LHS, assignment target cannot be written to\n" +
@@ -722,10 +758,16 @@ class Port(Net):
 
 
     def __init__(self, src: Net, isOutput: bool, frameDepth: int):
+        if not isinstance(src, Net):
+            raise ParseException(f"Net type expected, has `{type(src).__name__}`")
         if src.size is None:
             raise ParseException("Port cannot be created from unsized net")
         if src.initialName is None:
             raise ParseException("Port cannot be created from unnamed net")
+        if src.isWired:
+            raise ParseException("Port cannot be created from wired net, wired at " +
+                                 SyntaxNode.GetFullLocation(src.wiringFrame))
+        src.wireable = False
         # Input is always wire, output is always reg. Reg is optimized to wire anyway by a
         # synthesis tool if used in combination logic only, but allows using freely it in sequential
         # logic if needed.
@@ -734,6 +776,7 @@ class Port(Net):
         self.src = src
         self.isLhs = isOutput
         self.isOutput = isOutput
+        self.initialName = src.initialName
         self.name = src.initialName
         self.strValue = f"{'Output' if isOutput else 'Input'}(`{self.name}`)"
 
@@ -1088,12 +1131,27 @@ class ConditionalExpr(Expression):
         self.elseCase.RenderNested(ctx)
 
 
+class StatementScope(Enum):
+    NON_PROCEDURAL = 1
+    PROCEDURAL = 2
+    ANY = NON_PROCEDURAL | PROCEDURAL
+
+
 class Statement(SyntaxNode):
+    allowedScope: StatementScope = StatementScope.ANY
+
 
     def __init__(self, frameDepth: int, deferPush: bool = False):
         super().__init__(frameDepth + 1)
         if not deferPush:
-            CompileCtx.Current().PushStatement(self)
+            ctx = CompileCtx.Current()
+            if (self.allowedScope.value & StatementScope.NON_PROCEDURAL.value) == 0 and \
+                ctx.isProceduralBlock:
+                raise ParseException("Statement not allowed in procedural block")
+            if (self.allowedScope.value & StatementScope.PROCEDURAL.value) == 0 and \
+                not ctx.isProceduralBlock:
+                raise ParseException("Statement not allowed outside a procedural block")
+            ctx.PushStatement(self)
 
 
 class Block(SyntaxNode):
@@ -1205,6 +1263,7 @@ class IfContext:
 
 
 class IfStatement(Statement):
+    requiredScope = StatementScope.PROCEDURAL
     conditions: List[Expression]
     blocks: List[Block]
     elseBlock: Optional[Block] = None
@@ -1281,6 +1340,7 @@ class CaseContext:
 
 
 class WhenStatement(Statement):
+    requiredScope = StatementScope.PROCEDURAL
     switch: Expression
     conditions: List[Expression]
     blocks: List[Block]
@@ -1446,6 +1506,7 @@ class SensitivityList(SyntaxNode):
 
 
 class ProceduralBlock(Statement):
+    requiredScope = StatementScope.NON_PROCEDURAL
     sensitivityList: Optional[SensitivityList]
     body: Block
 
@@ -1458,6 +1519,8 @@ class ProceduralBlock(Statement):
     def __enter__(self):
         self.body = Block(1)
         ctx = CompileCtx.Current()
+        if ctx.isProceduralBlock:
+            raise ParseException("Nested procedural block")
         ctx.PushBlock(self.body)
         ctx.isProceduralBlock = True
 
@@ -1485,4 +1548,73 @@ class ProceduralBlock(Statement):
             ctx.Write(")")
         ctx.Write(" begin\n")
         self.body.Render(ctx)
-        ctx.Write("end\n")
+        ctx.Write("end")
+
+
+class Module(SyntaxNode):
+    name: str
+    ports: dict[str, Port]
+
+
+    def __init__(self, name: str, ports: dict[str, Port], frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.name = name
+        self.strValue = f"Module(`{name})`"
+        self.ports = ports
+        if len(ports) == 0:
+            raise ParseException("No ports specified for a module declaration")
+        for port in ports.values():
+            if port.isWired:
+                raise ParseException(
+                    "Module ports should not be used in any synthesizable code, "
+                    f"port {port} has been wired at {SyntaxNode.GetFullLocation(port.wiringFrame)}")
+            port.wireable = False
+        CompileCtx.Current().RegisterModule(self)
+
+
+    def __call__(self, **bindings: Expression | int) -> "ModuleInstance":
+        return ModuleInstance(self, bindings, 1)
+
+
+class ModuleInstance(Statement):
+    requiredScope = StatementScope.NON_PROCEDURAL
+    module: Module
+    bindings: dict[str, Expression]
+    name: str
+
+
+    def __init__(self, module: Module, bindings: dict[str, Expression | int], frameDepth):
+        super().__init__(frameDepth + 1)
+        self.module = module
+        self.bindings = dict()
+        for name, e in bindings.items():
+            if isinstance(e, int):
+                e = Const(e, frameDepth=frameDepth + 1)
+            else:
+                e = Expression._CheckType(e)
+            if name not in module.ports:
+                raise ParseException(f"No such port in module: `{name}`")
+            port = module.ports[name]
+            e._Wire(port.isOutput, frameDepth + 1)
+            if e.size is not None and port.size != e.size:
+                CompileCtx.Current().Warning(
+                    f"Port `{port}` binding size mismatch: {port.size} != {e.size} ({e})")
+            self.bindings[name] = e
+        if len(module.ports) != len(bindings):
+            for name in module.ports.keys():
+                if name not in bindings:
+                    raise ParseException(f"Module port nor bound: `{name}`")
+        self.name = CompileCtx.Current().GenerateModuleInstanceName(module.name)
+
+
+    def Render(self, ctx: RenderCtx):
+        ctx.Write(f"{self.module.name} {self.name}(\n")
+        for index, (name, e) in enumerate(self.bindings.items()):
+            isLast = index == len(self.bindings) - 1
+            ctx.WriteIndent(self.indent + 1)
+            ctx.Write(f".{name}(")
+            e.Render(ctx)
+            if isLast:
+                ctx.Write("));")
+            else:
+                ctx.Write("),\n")

@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 
 from GateForge.core import CompileCtx, ParseException, RenderCtx
-from GateForge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, reg, wire
+from GateForge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, module, reg, wire
 
 
 class TestBase(unittest.TestCase):
@@ -113,7 +113,7 @@ class ProceduralBlocks(TestBase):
 always @* begin
     w = 'h4;
 end
-""".lstrip())
+""".strip())
 
 
     def test_wire_procedural_assignment(self):
@@ -137,7 +137,7 @@ end
 always @* begin
     r <= 'h4;
 end
-""".lstrip())
+""".strip())
 
 
     def test_reg_single_trigger(self):
@@ -149,7 +149,7 @@ end
 always @(w) begin
     r <= 'h4;
 end
-""".lstrip())
+""".strip())
 
 
     def test_reg_two_triggers(self):
@@ -162,7 +162,7 @@ end
 always @(w1, w2) begin
     r <= 'h4;
 end
-""".lstrip())
+""".strip())
 
 
     def test_reg_three_triggers(self):
@@ -176,7 +176,7 @@ end
 always @(w1, w2, w3) begin
     r <= 'h4;
 end
-""".lstrip())
+""".strip())
 
 
     def test_reg_single_edge_trigger(self):
@@ -188,7 +188,7 @@ end
 always @(posedge w) begin
     r <= 'h4;
 end
-""".lstrip())
+""".strip())
 
 
     def test_reg_two_edge_triggers(self):
@@ -201,7 +201,7 @@ end
 always @(posedge w1, negedge w2) begin
     r <= 'h4;
 end
-""".lstrip())
+""".strip())
 
 
     def test_reg_three_edge_triggers(self):
@@ -215,7 +215,7 @@ end
 always @(posedge w1, negedge w2, posedge w3) begin
     r <= 'h4;
 end
-""".lstrip())
+""".strip())
 
 
     def test_bad_sensitivity_list_const(self):
@@ -255,7 +255,7 @@ always @* begin
         r <= 'h4;
     end
 end
-""".lstrip())
+""".strip())
 
 
     def test_if_else_statement(self):
@@ -275,7 +275,7 @@ always @* begin
         r <= 'h3;
     end
 end
-""".lstrip())
+""".strip())
 
 
     def test_if_else_if_statement(self):
@@ -295,7 +295,7 @@ always @* begin
         r <= 'h3;
     end
 end
-""".lstrip())
+""".strip())
 
 
     def test_if_else_if_else_statement(self):
@@ -319,7 +319,7 @@ always @* begin
         r <= 'h5;
     end
 end
-""".lstrip())
+""".strip())
 
 
     def test_if_else_if_else_nested_statement(self):
@@ -350,7 +350,7 @@ always @* begin
         r <= 'h5;
     end
 end
-""".lstrip())
+""".strip())
 
 
     def test_if_statement_not_in_procedural_block(self):
@@ -414,7 +414,7 @@ always @* begin
         end
     endcase
 end
-""".lstrip())
+""".strip())
 
 
     def test_when_case_size_mismatch(self):
@@ -445,7 +445,7 @@ always @* begin
         end
     endcase
 end
-""".lstrip(), 1)
+""".strip(), 1)
 
 
     def test_when_no_procedural_block(self):
@@ -473,7 +473,7 @@ always @* begin
     case (r)
     endcase
 end
-""".lstrip(), 1)
+""".strip(), 1)
 
 
     def test_when_unexpected_code(self):
@@ -503,6 +503,105 @@ end
                         r <<= 3
                     with _default():
                         r <<= 4
+
+
+class ModuleInstantiations(TestBase):
+
+    def test_basic(self):
+        w = wire("w")
+        r = reg("r")
+        m = module("MyModule",
+                   wire("a").input,
+                   wire("b").output,
+                   reg([3, 1], "c").input)
+        m(a=w, b=r, c=const(1) % w)
+        self.CheckResult("""
+MyModule MyModule_0(
+    .a(w),
+    .b(r),
+    .c({'h1, w}));
+""".strip())
+
+
+    def test_unnamed_port(self):
+        with self.assertRaises(ParseException):
+            module("MyModule",
+                    wire().input,
+                    wire("b").output)
+
+
+    def test_duplicate_port_name(self):
+        with self.assertRaises(ParseException):
+            module("MyModule",
+                    wire("a").input,
+                    wire("a").output)
+
+
+    def test_wired_port_creation(self):
+        a = wire("a")
+        a <<= 1
+        with self.assertRaises(ParseException):
+            a.input
+
+
+    def test_wired_port(self):
+        a = wire("a").input
+        w = wire()
+        w <<= a
+        with self.assertRaises(ParseException):
+            module("MyModule",
+                a,
+                wire("b").output)
+
+
+    def test_port_wired_after_declaration(self):
+        a = wire("a").input
+        module("MyModule",
+            a,
+            wire("b").output)
+        w = wire()
+        with self.assertRaises(ParseException):
+            w <<= a
+
+
+    def test_no_ports(self):
+        with self.assertRaises(ParseException):
+            module("MyModule")
+
+
+    def test_bad_lhs(self):
+        w = wire("w")
+        m = module("MyModule",
+                   wire("a").input,
+                   wire("b").output)
+        with self.assertRaises(ParseException):
+            m(a=w, b=1)
+
+
+    def test_size_mismatch(self):
+        w = wire("w")
+        r = reg("r")
+        m = module("MyModule",
+                   wire("a").input,
+                   wire("b").output,
+                   reg([3, 1], "c").input)
+        m(a=w, b=r, c=const(1, 1) % w)
+        self.CheckResult("""
+MyModule MyModule_0(
+    .a(w),
+    .b(r),
+    .c({1'h1, w}));
+""".strip(), 1)
+
+
+    def test_duplicate_module(self):
+        module("MyModule",
+               wire("a").input,
+               wire("b").output)
+        with self.assertRaises(ParseException):
+            module("MyModule",
+                wire("a").input,
+                wire("b").output)
 
 
 if __name__ == "__main__":
