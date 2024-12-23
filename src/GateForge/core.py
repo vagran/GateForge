@@ -682,12 +682,11 @@ class Net(Expression):
             self.baseIndex = baseIndex
         self.isReg = isReg
         self.strValue = f"{'Reg' if isReg else 'Wire'}"
-        if name is not None:
-            self.strValue += f"(`{name}`)"
 
         if name is not None:
             _CheckIdentifier(name)
             self.initialName = name
+            self.strValue += f"(`{name}`)"
 
 
     def __getitem__(self, s):
@@ -701,6 +700,12 @@ class Net(Expression):
     @property
     def effectiveName(self):
         return self.name if self.isWired else self.initialName
+
+
+    def SetName(self, name: str):
+        if hasattr(self, "name"):
+            raise Exception("Cannot set net name after it has been resolved")
+        self.initialName = name
 
 
     def Render(self, ctx: RenderCtx):
@@ -791,6 +796,11 @@ class NetProxy(Net):
     def strValue(self, value):
         # Ignore setting in base constructor
         pass
+
+
+    def SetName(self, name: str):
+        self.src.SetName(name)
+        self.initialName = name
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
