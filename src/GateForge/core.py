@@ -751,6 +751,10 @@ class Net(Expression):
         if name is None:
             raise Exception("Cannot render unwired unnamed net")
         if ctx.renderDecl:
+            # Port render method prepends this declaration
+            if ctx.options.sourceMap and type(self) is not Port:
+                ctx.Write(f"// {self.fullLocation}\n")
+                ctx.WriteIndent(self.indent)
             s = "reg" if self.isReg else "wire"
             assert self.size is not None
             if self.baseIndex != 0 or self.size > 1:
@@ -910,6 +914,9 @@ class Port(Net):
 
     def Render(self, ctx: RenderCtx):
         if ctx.renderDecl:
+            if ctx.options.sourceMap:
+                ctx.Write(f"// {self.fullLocation}\n")
+                ctx.WriteIndent(self.indent)
             ctx.Write("output" if self.src.isOutput else "input")
             ctx.Write(" ")
             super().Render(ctx)
@@ -1316,6 +1323,9 @@ class Block(SyntaxNode):
 
     def Render(self, ctx: RenderCtx):
         for stmt in self._statements:
+            if ctx.options.sourceMap:
+                ctx.WriteIndent(stmt.indent)
+                ctx.Write(f"// {stmt.fullLocation}\n")
             ctx.WriteIndent(stmt.indent)
             stmt.Render(ctx)
             ctx.Write("\n")

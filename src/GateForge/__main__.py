@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from GateForge.compiler import CompileModuleByPath
+from GateForge.core import RenderOptions
 
 
 def Main():
@@ -12,14 +13,24 @@ def Main():
                              "(separate function name by colon from file path or module)")
     parser.add_argument("--output", "-o", metavar="OUTPUT_FILE", type=str,
                         help="Output Verilog file. Outputs to stdout if not specified.")
+    parser.add_argument("--sourceMap", action="store_true",
+                        help="Inject comments with Python source locations")
 
     args = parser.parse_args()
 
+    renderOptions = RenderOptions()
+    if args.sourceMap:
+        renderOptions.sourceMap = True
+
+    options = {
+        "renderOptions": renderOptions
+    }
+
     if args.output is None:
-        CompileModuleByPath(args.input, sys.stdout)
+        CompileModuleByPath(args.input, sys.stdout, **options)
     else:
         with open(args.output, "w") as output:
-            CompileModuleByPath(args.input, output)
+            CompileModuleByPath(args.input, output, **options)
 
 
 if __name__ == "__main__":
