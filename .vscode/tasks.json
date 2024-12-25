@@ -6,11 +6,11 @@
         {
             "label": "Run main",
             "command": "${workspaceFolder}/.venv/bin/python",
-            "args": ["-m", "GateForge", "-h"],
+            "args": ["-m", "GateForge", "sample_module:ShifterModule"],
             "options": {
                 "cwd": "${workspaceFolder}/tmp",
                 "env": {
-                    "PYTHONPATH": "${workspaceFolder}/src",
+                    "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/test",
                     "PYTHONUNBUFFERED": "1"
                 }
             }

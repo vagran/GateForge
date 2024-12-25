@@ -37,9 +37,9 @@ class Shifter:
                 self.iface.output <<= self.iface.output[0] % self.iface.output[self.size - 1:1]
 
 
-def ShifterModule():
+def ShifterModule(size: int = 32):
 
-    shifter = Shifter()
+    shifter = Shifter(size)
 
     shifter.iface.external.Assign(
         clk=wire("CLK").input.port,
@@ -49,3 +49,7 @@ def ShifterModule():
         output=reg(shifter.size, "OUT").output.port)
 
     shifter()
+
+
+if __name__=="__main__":
+    ShifterModule()

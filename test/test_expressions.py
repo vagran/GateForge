@@ -76,6 +76,9 @@ class Net(TestBase):
             w = wire([3, 1], "w")
         self.CheckExpr(w, "wire[3:1] TestNs_w")
 
+        with namespace("TestNs"):
+            w = wire([3, 1], "w").input
+        self.CheckExpr(w, "wire[3:1] TestNs_w")
 
         with self.assertRaises(ParseException):
             reg((1,2))

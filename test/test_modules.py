@@ -42,24 +42,28 @@ endmodule
         def TestModule():
             wIn = wire("in")
             wOut = wire("out")
+            with namespace("NS"):
+                w = wire("w")
 
-            wOut <<= wIn
+            wOut <<= wIn & w
 
             with namespace("TestNs"):
                 _in = wire("in").input.port
-                _out = reg("out").output.port
+                with namespace("Internal"):
+                    _out = reg("out").output.port
 
             _out <<= _in
 
         self.CheckResult(TestModule, """
 module TestModule(
     input wire TestNs_in,
-    output reg TestNs_out);
+    output reg TestNs_Internal_out);
 wire in;
 wire out;
+wire NS_w;
 
-assign out = in;
-assign TestNs_out = TestNs_in;
+assign out = in & NS_w;
+assign TestNs_Internal_out = TestNs_in;
 endmodule
 """.lstrip())
 
@@ -185,7 +189,7 @@ endmodule
 
 
     def test_tmp(self):
-        print(CompileModuleToString(ShifterModule))
+        print(CompileModuleToString(ShifterModule, moduleArgs=[16]))
 
 
 if __name__ == "__main__":

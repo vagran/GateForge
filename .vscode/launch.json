@@ -10,11 +10,11 @@
             "request": "launch",
             "module": "GateForge",
             "justMyCode": true,
-            "cwd": "${workspaceFolder}/workspace",
+            "cwd": "${workspaceFolder}",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
+                "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/test",
             },
-            "args": []
+            "args": ["sample_module:ShifterModule"]
         },
         {
             "name": "Unit tests",

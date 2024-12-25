@@ -159,34 +159,38 @@ class CompileCtx:
     def GenerateNetName(self, isReg: bool, initialName: Optional[str] = None,
                         namespacePrefix: Optional[str] = None) -> str:
 
-        namePrefix = namespacePrefix if namespacePrefix is not None else ""
+        if namespacePrefix is None:
+            namespacePrefix = ""
         if initialName is not None:
-            namePrefix += initialName
-            if namePrefix not in self._nets:
+            namePrefix = initialName
+            if namespacePrefix + namePrefix not in self._nets:
                 return namePrefix
         elif isReg:
-            namePrefix += "r"
+            namePrefix = "r"
         else:
-            namePrefix += "w"
+            namePrefix = "w"
 
         while True:
             idx = self._curNetIdx
             self._curNetIdx += 1
             name = f"{namePrefix}_{idx}"
-            if name in self._nets or name in self._modules:
+            fullName = namespacePrefix + name
+            if fullName in self._nets or fullName in self._modules:
                 continue
             return name
 
 
     def GenerateModuleInstanceName(self, moduleName: str,
                                    namespacePrefix: Optional[str] = None) -> str:
-        if namespacePrefix is not None:
-            moduleName = namespacePrefix + moduleName
         while True:
             idx = self._curModuleIdx
             self._curModuleIdx += 1
             name = f"{moduleName}_{idx}"
-            if name in self._nets or name in self._modules:
+            if namespacePrefix is None:
+                fullName = name
+            else:
+                fullName = namespacePrefix + name
+            if fullName in self._nets or fullName in self._modules:
                 continue
             return name
 
