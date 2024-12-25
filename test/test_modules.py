@@ -3,7 +3,8 @@ import unittest
 
 from GateForge.compiler import CompileModule, CompileModuleToString
 from GateForge.core import ParseException
-from GateForge.dsl import reg, wire
+from GateForge.dsl import namespace, reg, wire
+from test.sample_module import ShifterModule
 
 
 class TestBase(unittest.TestCase):
@@ -34,6 +35,34 @@ module TestModule(
 assign out = in;
 endmodule
 """.lstrip())
+
+
+    def test_namespace_ports(self):
+
+        def TestModule():
+            wIn = wire("in")
+            wOut = wire("out")
+
+            wOut <<= wIn
+
+            with namespace("TestNs"):
+                _in = wire("in").input.port
+                _out = reg("out").output.port
+
+            _out <<= _in
+
+        self.CheckResult(TestModule, """
+module TestModule(
+    input wire TestNs_in,
+    output reg TestNs_out);
+wire in;
+wire out;
+
+assign out = in;
+assign TestNs_out = TestNs_in;
+endmodule
+""".lstrip())
+
 
     def test_chained_proxy(self):
 
@@ -153,6 +182,10 @@ assign w1 = w2 == w3;
 assign w4 = w2 == w5;
 endmodule
 """.lstrip(), 1)
+
+
+    def test_tmp(self):
+        print(CompileModuleToString(ShifterModule))
 
 
 if __name__ == "__main__":

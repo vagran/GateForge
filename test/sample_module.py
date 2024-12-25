@@ -1,6 +1,6 @@
 from GateForge.concepts import Interface
 from GateForge.core import Reg, Wire
-from GateForge.dsl import _else, _elseif, _if, always, reg, wire
+from GateForge.dsl import _else, _elseif, _if, always, namespace, reg, wire
 
 
 class Shifter:
@@ -17,13 +17,13 @@ class Shifter:
 
     def __init__(self, size: int = 32):
         self.size = size
-        self.iface = Shifter._Interface.Create(
-            #XXX namespace?
-            clk=wire("_CLK").input,
-            setSig=wire("_SET").input,
-            dir=wire("_DIR").input,
-            input=wire(size, "_IN").input,
-            output=reg(size, "_OUT").output)
+        with namespace("Shifter"):
+            self.iface = Shifter._Interface.Create(
+                clk=wire("CLK").input,
+                setSig=wire("SET").input,
+                dir=wire("DIR").input,
+                input=wire(size, "IN").input,
+                output=reg(size, "OUT").output)
 
 
     def __call__(self):

@@ -98,6 +98,7 @@ class CompileCtx:
     _modules: dict[str, "Module"]
     _blockStack: List["Block"]
     _warnings: List[WarningMsg]
+    _namespace: List[str]
 
 
     def __init__(self, moduleName: str):
@@ -108,6 +109,7 @@ class CompileCtx:
         self._modules = dict()
         self._blockStack = list()
         self._warnings = list()
+        self._namespace = list()
         self.moduleName = moduleName
         _CheckIdentifier(moduleName)
 
@@ -154,15 +156,18 @@ class CompileCtx:
         print(wm)
 
 
-    def GenerateNetName(self, isReg: bool, initialName: Optional[str] = None) -> str:
+    def GenerateNetName(self, isReg: bool, initialName: Optional[str] = None,
+                        namespacePrefix: Optional[str] = None) -> str:
+
+        namePrefix = namespacePrefix if namespacePrefix is not None else ""
         if initialName is not None:
-            if initialName not in self._nets:
-                return initialName
-            namePrefix = initialName
+            namePrefix += initialName
+            if namePrefix not in self._nets:
+                return namePrefix
         elif isReg:
-            namePrefix = "r"
+            namePrefix += "r"
         else:
-            namePrefix = "w"
+            namePrefix += "w"
 
         while True:
             idx = self._curNetIdx
@@ -173,7 +178,10 @@ class CompileCtx:
             return name
 
 
-    def GenerateModuleInstanceName(self, moduleName: str) -> str:
+    def GenerateModuleInstanceName(self, moduleName: str,
+                                   namespacePrefix: Optional[str] = None) -> str:
+        if namespacePrefix is not None:
+            moduleName = namespacePrefix + moduleName
         while True:
             idx = self._curModuleIdx
             self._curModuleIdx += 1
@@ -184,14 +192,15 @@ class CompileCtx:
 
 
     def RegisterNet(self, net: "Net"):
-        existing = self._nets.get(net.name, None)
+        name = net.fullName
+        existing = self._nets.get(name, None)
         if existing is not None:
             raise ParseException(
-                f"Net with name `{net.name}` already declared at {existing.fullLocation}, "
+                f"Net with name `{name}` already declared at {existing.fullLocation}, "
                 f"redeclaration at {net.fullLocation}")
-        self._nets[net.name] = net
+        self._nets[name] = net
         if isinstance(net, Port):
-            self._ports[net.name] = net
+            self._ports[name] = net
 
 
     def RegisterModule(self, module: "Module"):
@@ -221,6 +230,22 @@ class CompileCtx:
         if len(self._blockStack) < 2:
             raise Exception("Unexpected pop of root block")
         return self._blockStack.pop()
+
+
+    def PushNamespace(self, name: str):
+        _CheckIdentifier(name)
+        self._namespace.append(name)
+
+
+    def PopNamespace(self) -> str:
+        if len(self._namespace) == 0:
+            raise Exception("Namespace stack underflow")
+        return self._namespace.pop()
+
+
+    @property
+    def namespacePrefix(self) -> str:
+        return "".join(map(lambda n: n + "_", self._namespace))
 
 
     @property
@@ -308,6 +333,7 @@ class SyntaxNode:
     # String value to use in diagnostic messages
     strValue: Optional[str] = None
     indent: int
+    namespacePrefix: str
 
 
     def __init__(self, frameDepth: int):
@@ -316,6 +342,7 @@ class SyntaxNode:
         self.srcFrame = self.GetFrame(frameDepth + 1)
         ctx.lastFrame = self.srcFrame
         self.indent = ctx.indent
+        self.namespacePrefix = ctx.namespacePrefix
 
 
     @staticmethod
@@ -702,6 +729,13 @@ class Net(Expression):
         return self.name if self.isWired else self.initialName
 
 
+    @property
+    def fullName(self):
+        if not hasattr(self, "name"):
+            raise Exception("Name not yet resolved")
+        return self.namespacePrefix + self.name
+
+
     def SetName(self, name: str):
         if hasattr(self, "name"):
             raise Exception("Cannot set net name after it has been resolved")
@@ -717,9 +751,10 @@ class Net(Expression):
             assert self.size is not None
             if self.baseIndex != 0 or self.size > 1:
                 s += f"[{self.baseIndex + self.size - 1}:{self.baseIndex}]"
-            s += f" {name}"
+            s += f" {self.namespacePrefix}{name}"
             ctx.Write(s)
         else:
+            ctx.Write(self.namespacePrefix)
             ctx.Write(name)
 
 
@@ -729,7 +764,7 @@ class Net(Expression):
         ctx = CompileCtx.Current()
         # Ports have fixed names, so it is initialized in constructor
         if not hasattr(self, "name"):
-            self.name = ctx.GenerateNetName(self.isReg, self.initialName)
+            self.name = ctx.GenerateNetName(self.isReg, self.initialName, self.namespacePrefix)
         ctx.RegisterNet(self)
         return True
 
@@ -1702,11 +1737,11 @@ class ModuleInstance(Statement):
             for name in module.ports.keys():
                 if name not in bindings:
                     raise ParseException(f"Module port nor bound: `{name}`")
-        self.name = CompileCtx.Current().GenerateModuleInstanceName(module.name)
+        self.name = CompileCtx.Current().GenerateModuleInstanceName(module.name, self.namespacePrefix)
 
 
     def Render(self, ctx: RenderCtx):
-        ctx.Write(f"{self.module.name} {self.name}(\n")
+        ctx.Write(f"{self.namespacePrefix}{self.module.name} {self.name}(\n")
         for index, (name, e) in enumerate(self.bindings.items()):
             isLast = index == len(self.bindings) - 1
             ctx.WriteIndent(self.indent + 1)
@@ -1716,3 +1751,20 @@ class ModuleInstance(Statement):
                 ctx.Write("));")
             else:
                 ctx.Write("),\n")
+
+
+class Namespace(SyntaxNode):
+    name: str
+
+    def __init__(self, name: str, frameDepth):
+        super().__init__(frameDepth + 1)
+        self.name = name
+
+
+    def __enter__(self):
+        CompileCtx.Current().PushNamespace(self.name)
+
+
+    def __exit__(self, excType, excValue, tb):
+        if CompileCtx.Current().PopNamespace() != self.name:
+            raise Exception("Unexpected current namespace")

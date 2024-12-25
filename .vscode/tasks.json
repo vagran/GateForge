@@ -40,5 +40,15 @@
                 }
             }
         },
+        {
+            "label": "Check types",
+            "command": "${workspaceFolder}/.venv/bin/mypy",
+            "args": ["src"],
+            "options": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src"
+                }
+            }
+        },
     ]
 }

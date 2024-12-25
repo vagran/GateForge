@@ -29,7 +29,7 @@ class Bus(Generic[TBus]):
                 raise Exception(f"Expected `Reg` for net `{name}`, has `Wire`")
             setattr(bus, name, value)
             if value.initialName is None:
-                value.SetName(f"{cls.__name__}_{name}")
+                value.SetName(f"{name}")
 
         for name in kwargs.keys():
             if name not in annotations:

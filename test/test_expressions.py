@@ -2,7 +2,7 @@ import io
 import unittest
 
 from GateForge.core import CompileCtx, Expression, ParseException, RenderCtx
-from GateForge.dsl import cond, const, reg, wire
+from GateForge.dsl import cond, const, namespace, reg, wire
 from pathlib import Path
 
 
@@ -71,6 +71,11 @@ class Net(TestBase):
         self.CheckExpr(wire([3, 1], "w"), "wire[3:1] w")
         self.CheckExpr(reg((5, 0), "w"), "reg[5:0] w")
         self.CheckExpr(reg((1, 1), "w"), "reg[1:1] w")
+
+        with namespace("TestNs"):
+            w = wire([3, 1], "w")
+        self.CheckExpr(w, "wire[3:1] TestNs_w")
+
 
         with self.assertRaises(ParseException):
             reg((1,2))

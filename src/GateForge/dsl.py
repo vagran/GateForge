@@ -1,7 +1,7 @@
 import collections.abc
 from typing import List, Optional, Tuple, Type, cast
 from GateForge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, \
-    Expression, IfContext, IfStatement, Module, Net, NetProxy, ParseException, ProceduralBlock, \
+    Expression, IfContext, IfStatement, Module, Namespace, Net, NetProxy, ParseException, ProceduralBlock, \
     Reg, SensitivityList, WhenStatement, Wire
 
 
@@ -115,3 +115,7 @@ def module(moduleName: str, *args: NetProxy) -> Module:
         ports[port.initialName] = port
 
     return Module(moduleName, ports, 1)
+
+
+def namespace(name: str) -> Namespace:
+    return Namespace(name, 1)

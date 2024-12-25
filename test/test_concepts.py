@@ -33,8 +33,8 @@ class TestBus(TestBase):
         b = SampleBus.Create(w=wire().input, r=reg().output)
         self.assertIsInstance(b.w.src, Wire)
         self.assertIsInstance(b.r.src, Reg)
-        self.assertEqual(b.w.effectiveName, "SampleBus_w")
-        self.assertEqual(b.r.effectiveName, "SampleBus_r")
+        self.assertEqual(b.w.effectiveName, "w")
+        self.assertEqual(b.r.effectiveName, "r")
 
 
     def test_no_args(self):
