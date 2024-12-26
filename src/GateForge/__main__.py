@@ -15,6 +15,8 @@ def Main():
                         help="Output Verilog file. Outputs to stdout if not specified.")
     parser.add_argument("--sourceMap", action="store_true",
                         help="Inject comments with Python source locations")
+    parser.add_argument("--moduleName", type=str,
+                        help="Module name for produced top-level module.")
 
     args = parser.parse_args()
 
@@ -23,7 +25,8 @@ def Main():
         renderOptions.sourceMap = True
 
     options = {
-        "renderOptions": renderOptions
+        "renderOptions": renderOptions,
+        "moduleName": args.moduleName
     }
 
     if args.output is None:
