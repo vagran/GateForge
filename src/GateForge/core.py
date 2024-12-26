@@ -422,6 +422,11 @@ class Expression(SyntaxNode):
         return SliceExpr(self, index, size, 1)
 
 
+    def __setitem__(self, idx, value):
+        if not isinstance(value, SliceExpr):
+            raise ParseException("Slice item can be only set by `<<=` or `//=` operator.")
+
+
     def _GetChildren(self) -> Iterator["Expression"]: # type: ignore
         "Should iterate child expression nodes"
         yield from ()
@@ -892,10 +897,7 @@ class Port(Net):
         if src.src.isWired:
             raise ParseException("Port cannot be created from wired net, wired at " +
                                  SyntaxNode.GetFullLocation(src.src.wiringFrame))
-        # Input is always wire, output is always reg. Reg is optimized to wire anyway by a
-        # synthesis tool if used in combination logic only, but allows using freely it in sequential
-        # logic if needed.
-        super().__init__(size=src.size, baseIndex=src.baseIndex, isReg=src.isOutput,
+        super().__init__(size=src.size, baseIndex=src.baseIndex, isReg=src.isReg,
                          name=src.initialName, frameDepth=frameDepth + 1)
         self.src = src
         self.isLhs = src.isOutput

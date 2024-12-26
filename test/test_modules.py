@@ -168,22 +168,22 @@ endmodule
         def TestModule():
             w1 = wire("w1").output.port
             w2 = wire("w2").input.port
-            w3 = wire("w3").input.port
-            w4 = wire("w4").output.port
+            r3 = reg("r3").input.port
+            r4 = reg("r4").output.port
             w5 = wire(8, "w5").input.port
-            w1 <<= w2 == w3
-            w4 <<= w2 == w5
+            w1 <<= w2 == r3
+            r4 <<= w2 == w5
 
         self.CheckResult(TestModule, """
 module TestModule(
-    output reg w1,
+    input reg r3,
+    output reg r4,
+    output wire w1,
     input wire w2,
-    input wire w3,
-    output reg w4,
     input wire[7:0] w5);
 
-assign w1 = w2 == w3;
-assign w4 = w2 == w5;
+assign w1 = w2 == r3;
+assign r4 = w2 == w5;
 endmodule
 """.lstrip(), 1)
 

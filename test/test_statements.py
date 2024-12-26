@@ -109,6 +109,14 @@ class Test(TestBase):
             (const(5) % w1 % w2).assign(3)
 
 
+    def test_slice_assignment(self):
+        w = wire(8, "w")
+        w[3:0] <<= 15
+        self.CheckResult("assign w[3:0] = 'hf;")
+        with self.assertRaises(ParseException):
+            w[3:0] = 15
+
+
 class ProceduralBlocks(TestBase):
 
     def test_empty_sl(self):
