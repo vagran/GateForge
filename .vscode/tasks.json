@@ -50,5 +50,17 @@
                 }
             }
         },
+        {
+            "label": "tmp",
+            "type": "process",
+            "command": "verilator",
+            "args": ["-V"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${config:env.ossCadSuiteDir}/bin:${env:PATH}"
+                }
+            }
+        }
     ]
 }

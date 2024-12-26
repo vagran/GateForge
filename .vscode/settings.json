@@ -16,5 +16,8 @@
         "Verilog",
         "wireable",
         "xnor"
-    ]
+    ],
+    "env": {
+        "ossCadSuiteDir": "/opt/oss-cad-suite"
+    }
 }
