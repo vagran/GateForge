@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 
 from GateForge.core import CompileCtx, ParseException, RenderCtx
-from GateForge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, module, \
+from GateForge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, module, namespace, \
     parameter, reg, wire
 
 
@@ -560,6 +560,23 @@ MyModule #(
 """.strip())
 
 
+    def test_basic_namespace(self):
+        w = wire("w")
+        r = reg("r")
+        m = module("MyModule",
+                   wire("a").input,
+                   wire("b").output,
+                   reg([3, 1], "c").input)
+        with namespace("NS"):
+            m(a=w, b=r, c=const(1) % w)
+        self.CheckResult("""
+MyModule NS_MyModule_0(
+    .a(w),
+    .b(r),
+    .c({'h1, w}));
+""".strip())
+
+
     def test_unnamed_port(self):
         with self.assertRaises(ParseException):
             module("MyModule",
@@ -624,13 +641,25 @@ MyModule #(
             m(a=w, b=w.input)
 
 
-    def test_bad_missing_port(self):
+    def test_bad_missing_input_port(self):
+        w = wire("w")
+        m = module("MyModule",
+                   wire("a").input,
+                   wire("b").input)
+        with self.assertRaises(ParseException):
+            m(a=w)
+
+
+    def test_bad_missing_output_port(self):
         w = wire("w")
         m = module("MyModule",
                    wire("a").input,
                    wire("b").output)
-        with self.assertRaises(ParseException):
-            m(a=w)
+        m(a=w)
+        self.CheckResult("""
+MyModule MyModule_0(
+    .a(w));
+""".strip())
 
 
     def test_bad_undeclared_port(self):

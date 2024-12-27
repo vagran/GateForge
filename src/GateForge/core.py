@@ -1767,15 +1767,15 @@ class ModuleInstance(Statement):
                     f"Port `{port}` binding size mismatch: {port.size} != {e.size} ({e})")
             self.portBindings[name] = e
 
-        for name in module.ports.keys():
-            if name not in bindings:
-                raise ParseException(f"Module port not bound: `{name}`")
+        for name, port in module.ports.items():
+            if not port.isOutput and name not in bindings:
+                raise ParseException(f"Module input port not bound: `{name}`")
 
         self.name = CompileCtx.Current().GenerateModuleInstanceName(module.name, self.namespacePrefix)
 
 
     def Render(self, ctx: RenderCtx):
-        ctx.Write(f"{self.namespacePrefix}{self.module.name} ")
+        ctx.Write(f"{self.module.name} ")
 
         if len(self.paramBindings) > 0:
             ctx.Write("#(\n")
@@ -1791,7 +1791,7 @@ class ModuleInstance(Statement):
                     ctx.Write(",\n")
             ctx.WriteIndent(self.indent + 1)
 
-        ctx.Write(f"{self.name}(\n")
+        ctx.Write(f"{self.namespacePrefix}{self.name}(\n")
 
         for index, (name, e) in enumerate(self.portBindings.items()):
             isLast = index == len(self.portBindings) - 1
