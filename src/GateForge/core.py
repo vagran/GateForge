@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
 from io import TextIOBase
-import io
 import threading
-from typing import Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Iterable, Iterator, List, Optional, Tuple
 import traceback
 import re
 import math
@@ -1699,16 +1698,28 @@ class ProceduralBlock(Statement):
         ctx.Write("end")
 
 
+class ModuleParameter(SyntaxNode):
+    name: str
+
+
+    def __init__(self, name: str, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.name = name
+
+
 class Module(SyntaxNode):
     name: str
     ports: dict[str, NetProxy]
+    params: dict[str, ModuleParameter]
 
 
-    def __init__(self, name: str, ports: dict[str, NetProxy], frameDepth: int):
+    def __init__(self, name: str, ports: dict[str, NetProxy], params: dict[str, ModuleParameter],
+                 frameDepth: int):
         super().__init__(frameDepth + 1)
         self.name = name
         self.strValue = f"Module(`{name})`"
         self.ports = ports
+        self.params = params
         if len(ports) == 0:
             raise ParseException("No ports specified for a module declaration")
         for port in ports.values():
@@ -1721,22 +1732,28 @@ class Module(SyntaxNode):
         CompileCtx.Current().RegisterModule(self)
 
 
-    def __call__(self, **bindings: Expression | int) -> "ModuleInstance":
+    def __call__(self, **bindings: Any) -> "ModuleInstance":
         return ModuleInstance(self, bindings, 1)
 
 
 class ModuleInstance(Statement):
     requiredScope = StatementScope.NON_PROCEDURAL
     module: Module
-    bindings: dict[str, Expression]
+    portBindings: dict[str, Expression]
+    paramBindings: dict[str, Any]
     name: str
 
 
-    def __init__(self, module: Module, bindings: dict[str, Expression | int], frameDepth):
+    def __init__(self, module: Module, bindings: dict[str, Any], frameDepth):
         super().__init__(frameDepth + 1)
         self.module = module
-        self.bindings = dict()
+        self.portBindings = dict()
+        self.paramBindings = dict()
         for name, e in bindings.items():
+            if name in module.params:
+                self.paramBindings[name] = e
+                continue
+
             if isinstance(e, int):
                 e = Const(e, frameDepth=frameDepth + 1)
             else:
@@ -1748,18 +1765,36 @@ class ModuleInstance(Statement):
             if e.size is not None and port.size != e.size:
                 CompileCtx.Current().Warning(
                     f"Port `{port}` binding size mismatch: {port.size} != {e.size} ({e})")
-            self.bindings[name] = e
-        if len(module.ports) != len(bindings):
-            for name in module.ports.keys():
-                if name not in bindings:
-                    raise ParseException(f"Module port nor bound: `{name}`")
+            self.portBindings[name] = e
+
+        for name in module.ports.keys():
+            if name not in bindings:
+                raise ParseException(f"Module port not bound: `{name}`")
+
         self.name = CompileCtx.Current().GenerateModuleInstanceName(module.name, self.namespacePrefix)
 
 
     def Render(self, ctx: RenderCtx):
-        ctx.Write(f"{self.namespacePrefix}{self.module.name} {self.name}(\n")
-        for index, (name, e) in enumerate(self.bindings.items()):
-            isLast = index == len(self.bindings) - 1
+        ctx.Write(f"{self.namespacePrefix}{self.module.name} ")
+
+        if len(self.paramBindings) > 0:
+            ctx.Write("#(\n")
+            for index, (name, e) in enumerate(self.paramBindings.items()):
+                isLast = index == len(self.paramBindings) - 1
+                ctx.WriteIndent(self.indent + 1)
+                if isinstance(e, str):
+                    e = f"\"{e}\""
+                ctx.Write(f".{name}({e})")
+                if isLast:
+                    ctx.Write(")\n")
+                else:
+                    ctx.Write(",\n")
+            ctx.WriteIndent(self.indent + 1)
+
+        ctx.Write(f"{self.name}(\n")
+
+        for index, (name, e) in enumerate(self.portBindings.items()):
+            isLast = index == len(self.portBindings) - 1
             ctx.WriteIndent(self.indent + 1)
             ctx.Write(f".{name}(")
             e.Render(ctx)

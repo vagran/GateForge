@@ -4,7 +4,6 @@ import unittest
 from GateForge.compiler import CompileModule, CompileModuleToString
 from GateForge.core import ParseException
 from GateForge.dsl import namespace, reg, wire
-from test.sample_module import ShifterModule
 
 
 class TestBase(unittest.TestCase):
@@ -186,10 +185,6 @@ assign w1 = w2 == r3;
 assign r4 = w2 == w5;
 endmodule
 """.lstrip(), 1)
-
-
-    def test_tmp(self):
-        print(CompileModuleToString(ShifterModule, moduleArgs=[16]))
 
 
 if __name__ == "__main__":

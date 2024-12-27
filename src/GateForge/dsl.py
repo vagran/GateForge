@@ -1,8 +1,8 @@
 import collections.abc
 from typing import List, Optional, Tuple, Type, cast
 from GateForge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, \
-    Expression, IfContext, IfStatement, Module, Namespace, Net, NetProxy, ParseException, ProceduralBlock, \
-    Reg, SensitivityList, WhenStatement, Wire
+    Expression, IfContext, IfStatement, Module, ModuleParameter, Namespace, Net, NetProxy, \
+    ParseException, ProceduralBlock, Reg, SensitivityList, WhenStatement, Wire
 
 
 def const(value: str | int, size: Optional[int] = None) -> Const:
@@ -102,19 +102,36 @@ def _default() -> CaseContext:
     return stmt._GetContext(None)
 
 
-def module(moduleName: str, *args: NetProxy) -> Module:
+def parameter(name: str) -> ModuleParameter:
+    return ModuleParameter(name, 1)
+
+
+def module(moduleName: str, *args: NetProxy | ModuleParameter) -> Module:
     ports: dict[str, NetProxy] = dict()
+    params: dict[str, ModuleParameter] = dict()
 
-    for port in args:
-        if not isinstance(port, NetProxy):
-            raise ParseException(f"NetProxy instance expected, has `{type(port).__name__}`")
-        if port.initialName is None:
-            raise ParseException(f"Unnamed net cannot be used as module port in a declaration, {port}")
-        if port.initialName in ports:
-            raise ParseException(f"Duplicate port name in a module declaration: `{port.initialName}`")
-        ports[port.initialName] = port
+    for arg in args:
 
-    return Module(moduleName, ports, 1)
+        if isinstance(arg, ModuleParameter):
+            if arg.name in ports:
+                raise ParseException(f"Parameter name conflicts with port name: {arg.name}")
+            if arg.name in params:
+                raise ParseException(f"Duplicate parameter name: {arg.name}")
+            params[arg.name] = arg
+            continue
+
+        if not isinstance(arg, NetProxy):
+            raise ParseException(f"NetProxy instance expected, has `{type(arg).__name__}`")
+
+        if arg.initialName is None:
+            raise ParseException(f"Unnamed net cannot be used as module port in a declaration, {arg}")
+        if arg.initialName in ports:
+            raise ParseException(f"Duplicate port name in a module declaration: `{arg.initialName}`")
+        if arg.initialName in params:
+            raise ParseException(f"Port name conflicts with parameter name: {arg.initialName}")
+        ports[arg.initialName] = arg
+
+    return Module(moduleName, ports, params, 1)
 
 
 def namespace(name: str) -> Namespace:
