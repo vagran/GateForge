@@ -35,12 +35,18 @@ class TestBase(unittest.TestCase):
         self.assertEqual(len(self.compileCtx.GetWarnings()), expectedWarnings)
 
 
-class Test(TestBase):
+class TestAssignments(TestBase):
 
     def test_continuous_assignment_const(self):
         w = wire("w")
-        w <<= 2
-        self.CheckResult("assign w = 'h2;")
+        w <<= 1
+        self.CheckResult("assign w = 'h1;")
+
+
+    def test_continuous_assignment_const_size_exceeded(self):
+        w = wire("w")
+        with self.assertRaises(ParseException):
+            w <<= 2
 
 
     def test_continuous_assignment_wire(self):
@@ -116,6 +122,57 @@ class Test(TestBase):
         self.CheckResult("assign w[3:0] = 'hf;")
         with self.assertRaises(ParseException):
             w[3:0] = 15
+
+
+    def test_multiple_assignments(self):
+        w = wire(8, "w")
+        w[3:0] <<= 15
+        w[4] <<= 0
+        w[7:5] <= 3
+        with self.assertRaises(ParseException):
+            w[2] <<= 1
+        with self.assertRaises(ParseException):
+            w[4] <<= 1
+
+
+    def test_multiple_assignments_slice(self):
+        w = wire(8, "w")
+        w[7:5][1] <<= 1
+        w[7] <<= 1
+        w[5] <<= 1
+        with self.assertRaises(ParseException):
+            w[6] <<= 1
+
+
+    def test_multiple_assignments_concat(self):
+        w = wire(8, "w")
+        c = (w[7:5] % w[3:1])
+        c <<= 0
+        w[4] <<= 1
+        w[0] <<= 1
+        with self.assertRaises(ParseException):
+            w[7] <<= 1
+        with self.assertRaises(ParseException):
+            w[6] <<= 1
+        with self.assertRaises(ParseException):
+            w[5] <<= 1
+        with self.assertRaises(ParseException):
+            w[3] <<= 1
+        with self.assertRaises(ParseException):
+            w[2] <<= 1
+        with self.assertRaises(ParseException):
+            w[1] <<= 1
+
+
+    def test_multiple_assignments_concat_slice(self):
+        w = wire(8, "w")
+        w[2:0] <<= 7
+        w[4] <<= 0
+        w[7:5] <= 3
+        # Assign bit 3
+        (w[4:3] % w[1])[1] <<= 1
+        with self.assertRaises(ParseException):
+            w[3] <<= 1
 
 
 class ProceduralBlocks(TestBase):

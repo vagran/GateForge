@@ -378,7 +378,7 @@ class SyntaxNode:
         return s
 
 
-    def GetFrame(self, frameDepth: int):
+    def GetFrame(self, frameDepth: int) -> traceback.FrameSummary:
         return traceback.extract_stack()[-frameDepth - 2]
 
 
@@ -458,6 +458,16 @@ class Expression(SyntaxNode):
         self.isWired = True
         self.wiringFrame = self.GetFrame(frameDepth + 1)
         return True
+
+
+    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+        """Called to mark assignment to the expression.
+
+        :param bitIndex: Bit index which is driven. None if whole expression affected.
+        """
+        assert self.isWired
+        assert self.isLhs
+        # Should be overridden
 
 
     def _DescribeNonLhs(self, indent: int =  0) -> str:
@@ -703,6 +713,8 @@ class Net(Expression):
     initialName: Optional[str] = None
     # Actual name is resolved when wired
     name: str
+    # Bits assignments map
+    assignments: List[Optional[traceback.FrameSummary]]
 
 
     def __init__(self, *, size: int, baseIndex: Optional[int], isReg: bool, name: Optional[str],
@@ -722,6 +734,8 @@ class Net(Expression):
             _CheckIdentifier(name)
             self.initialName = name
             self.strValue += f"(`{name}`)"
+
+        self.assignments = [None for i in range(size)]
 
 
     def __getitem__(self, s):
@@ -779,6 +793,24 @@ class Net(Expression):
             self.name = ctx.GenerateNetName(self.isReg, self.initialName, self.namespacePrefix)
         ctx.RegisterNet(self)
         return True
+
+
+    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+
+        def _AssignBit(bitIndex: int, frame: traceback.FrameSummary):
+            prevFrame = self.assignments[bitIndex]
+            if not self.isReg and prevFrame is not None:
+                raise ParseException(
+                    f"Wire re-assignment, `{self}[{bitIndex}]` was previously assigned at " +
+                    SyntaxNode.GetFullLocation(prevFrame))
+            self.assignments[bitIndex] = frame
+
+        frame = self.GetFrame(frameDepth + 1)
+        if bitIndex is None:
+            for i in range(self.size):
+                _AssignBit(i, frame)
+        else:
+            _AssignBit(bitIndex, frame)
 
 
     @property
@@ -938,6 +970,7 @@ class Port(Net):
 
 
 class ConcatExpr(Expression):
+    # Left to right
     args: List[Expression]
     # Minimal number of bits required to present the value without trimming. Useful when having
     # left-most const value with unbound size.
@@ -999,6 +1032,21 @@ class ConcatExpr(Expression):
         yield from self.args
 
 
+    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+        if bitIndex is None:
+            for arg in self.args:
+                arg._Assign(None, frameDepth + 1)
+        else:
+            index = 0
+            for arg in reversed(self.args):
+                if arg.size is None or bitIndex < index + arg.size:
+                    assert bitIndex >= index
+                    arg._Assign(bitIndex - index, frameDepth + 1)
+                    return
+                index += arg.size
+            raise Exception(f"Assignment index out of range: {bitIndex}")
+
+
     def Render(self, ctx: RenderCtx):
         ctx.Write("{")
         isFirst = True
@@ -1012,6 +1060,7 @@ class ConcatExpr(Expression):
 
 
 class SliceExpr(Expression):
+    size: int
     arg: Expression
     # Index is always zero-based, nets' base index is applied before if needed.
     index: int
@@ -1043,6 +1092,14 @@ class SliceExpr(Expression):
 
     def _GetChildren(self) -> Iterator["Expression"]:
         yield self.arg
+
+
+    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+        if bitIndex is None:
+            for i in range(self.index, self.index + self.size):
+                self.arg._Assign(i, frameDepth + 1)
+        else:
+            self.arg._Assign(self.index + bitIndex, frameDepth + 1)
 
 
     def Render(self, ctx: RenderCtx):
@@ -1338,6 +1395,7 @@ class AssignmentStatement(Statement):
     isBlocking: bool
     isProceduralBlock: bool
 
+
     def __init__(self, lhs: Expression, rhs: Expression | int, *, isBlocking: bool, frameDepth: int):
         super().__init__(frameDepth + 1)
         if isinstance(rhs, int):
@@ -1348,6 +1406,7 @@ class AssignmentStatement(Statement):
         self.isProceduralBlock = CompileCtx.Current().isProceduralBlock
         lhs._Wire(True, frameDepth + 1)
         rhs._Wire(False, frameDepth + 1)
+        lhs._Assign(None, frameDepth + 1)
 
         if self.isProceduralBlock and not self.isBlocking:
             for e in self.lhs._GetLeafNodes():
@@ -1357,10 +1416,13 @@ class AssignmentStatement(Statement):
         assert lhs.size is not None
         if rhs.size is not None:
             if rhs.size > lhs.size:
-                raise ParseException(f"Assignment size exceeded: {lhs.size} <<= {rhs.size}")
+                raise ParseException(f"Assignment size exceeded: {lhs.size} bits <<= {rhs.size} bits")
             elif rhs.size < lhs.size:
-                CompileCtx.Current().Warning(f"Assignment of insufficient size: {lhs.size} <<= {rhs.size}",
+                CompileCtx.Current().Warning(f"Assignment of insufficient size: {lhs.size} bits <<= {rhs.size} bits",
                                              self.srcFrame)
+        if hasattr(rhs, "valueSize"):
+            if rhs.valueSize > lhs.size:
+                raise ParseException(f"Constant minimal size exceeds assignment target size: {lhs.size} bits <<= {rhs.valueSize} bits")
 
 
     def Render(self, ctx: RenderCtx):
