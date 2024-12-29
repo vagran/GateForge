@@ -88,6 +88,7 @@ class CompileCtx:
 
     lastFrame: Optional[traceback.FrameSummary] = None
     isProceduralBlock: bool = False
+    isInitialBlock = False
 
     _threadLocal = threading.local()
     _curNetIdx: int
@@ -1393,6 +1394,7 @@ class AssignmentStatement(Statement):
     rhs: Expression
     isBlocking: bool
     isProceduralBlock: bool
+    isInitialBlock: bool
 
 
     def __init__(self, lhs: Expression, rhs: RawExpression, *, isBlocking: bool, frameDepth: int):
@@ -1401,7 +1403,9 @@ class AssignmentStatement(Statement):
         self.lhs = Expression._CheckType(lhs)
         self.rhs = rhs
         self.isBlocking = isBlocking
-        self.isProceduralBlock = CompileCtx.Current().isProceduralBlock
+        ctx = CompileCtx.Current()
+        self.isProceduralBlock = ctx.isProceduralBlock
+        self.isInitialBlock= ctx.isInitialBlock
         lhs._Wire(True, frameDepth + 1)
         rhs._Wire(False, frameDepth + 1)
         lhs._Assign(None, frameDepth + 1)
@@ -1416,8 +1420,8 @@ class AssignmentStatement(Statement):
             if rhs.size > lhs.size:
                 raise ParseException(f"Assignment size exceeded: {lhs.size} bits <<= {rhs.size} bits")
             elif rhs.size < lhs.size:
-                CompileCtx.Current().Warning(f"Assignment of insufficient size: {lhs.size} bits <<= {rhs.size} bits",
-                                             self.srcFrame)
+                ctx.Warning(f"Assignment of insufficient size: {lhs.size} bits <<= {rhs.size} bits",
+                            self.srcFrame)
         if hasattr(rhs, "valueSize"):
             if rhs.valueSize > lhs.size:
                 raise ParseException(f"Constant minimal size exceeds assignment target size: {lhs.size} bits <<= {rhs.valueSize} bits")
@@ -1425,7 +1429,7 @@ class AssignmentStatement(Statement):
 
     def Render(self, ctx: RenderCtx):
         if self.isProceduralBlock:
-            op = "=" if self.isBlocking else "<="
+            op = "=" if self.isBlocking or self.isInitialBlock else "<="
             self.lhs.Render(ctx)
             ctx.Write(f" {op} ")
             self.rhs.Render(ctx)
@@ -1754,6 +1758,43 @@ class ProceduralBlock(Statement):
             self.sensitivityList.Render(ctx)
             ctx.Write(")")
         ctx.Write(" begin\n")
+        self.body.Render(ctx)
+        ctx.Write("end")
+
+
+class InitialBlock(Statement):
+    allowedScope = StatementScope.NON_PROCEDURAL
+    body: Block
+
+
+    def __init__(self, frameDepth: int):
+        super().__init__(frameDepth + 1, deferPush=True)
+
+
+    def __enter__(self):
+        self.body = Block(1)
+        ctx = CompileCtx.Current()
+        if ctx.isProceduralBlock:
+            raise ParseException("Nested procedural block")
+        ctx.PushBlock(self.body)
+        ctx.isProceduralBlock = True
+        ctx.isInitialBlock = True
+
+
+    def __exit__(self, excType, excValue, tb):
+        ctx = CompileCtx.Current()
+        if ctx.PopBlock() is not self.body:
+            raise Exception("Unexpected current block")
+        ctx.isProceduralBlock = False
+        ctx.isInitialBlock = False
+        if len(self.body) == 0:
+            ctx.Warning(f"Empty initial block", self.srcFrame)
+        else:
+            ctx.PushStatement(self)
+
+
+    def Render(self, ctx: RenderCtx):
+        ctx.Write("initial begin\n")
         self.body.Render(ctx)
         ctx.Write("end")
 

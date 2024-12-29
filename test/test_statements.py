@@ -3,8 +3,8 @@ from pathlib import Path
 import unittest
 
 from GateForge.core import CompileCtx, ParseException, RenderCtx
-from GateForge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, module, namespace, \
-    parameter, reg, wire
+from GateForge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, initial, \
+    module, namespace, parameter, reg, wire
 
 
 class TestBase(unittest.TestCase):
@@ -581,6 +581,19 @@ end
                         r <<= 3
                     with _default():
                         r <<= 4
+
+
+class InitialBlocks(TestBase):
+
+    def test_empty_sl(self):
+        r = reg(8, "r")
+        with initial():
+            r <<= 0xff
+        self.CheckResult("""
+initial begin
+    r = 'hff;
+end
+""".strip())
 
 
 class ModuleInstantiations(TestBase):

@@ -1,8 +1,9 @@
 import collections.abc
 from typing import List, Optional, Tuple, Type, cast
 from GateForge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, \
-    Expression, IfContext, IfStatement, Module, ModuleParameter, Namespace, Net, NetProxy, \
-    ParseException, ProceduralBlock, Reg, SensitivityList, WhenStatement, Wire, RawExpression
+    Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, Namespace, Net, \
+    NetProxy, ParseException, ProceduralBlock, Reg, SensitivityList, WhenStatement, Wire, \
+    RawExpression
 
 
 def const(value: str | int | bool, size: Optional[int] = None) -> Const:
@@ -54,6 +55,10 @@ def always(sensitivityList: SensitivityList | Net | ArithmeticExpr | None = None
     else:
         sl = sensitivityList
     return ProceduralBlock(sl, 1)
+
+
+def initial() -> InitialBlock:
+    return InitialBlock(1)
 
 
 def cond(condition: Expression, ifCase: RawExpression, elseCase: RawExpression) -> ConditionalExpr:
