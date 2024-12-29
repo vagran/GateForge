@@ -1346,10 +1346,10 @@ class Statement(SyntaxNode):
         if not deferPush:
             ctx = CompileCtx.Current()
             if (self.allowedScope.value & StatementScope.NON_PROCEDURAL.value) == 0 and \
-                ctx.isProceduralBlock:
+                not ctx.isProceduralBlock:
                 raise ParseException("Statement not allowed in procedural block")
             if (self.allowedScope.value & StatementScope.PROCEDURAL.value) == 0 and \
-                not ctx.isProceduralBlock:
+                ctx.isProceduralBlock:
                 raise ParseException("Statement not allowed outside a procedural block")
             ctx.PushStatement(self)
 
@@ -1470,7 +1470,7 @@ class IfContext:
 
 
 class IfStatement(Statement):
-    requiredScope = StatementScope.PROCEDURAL
+    allowedScope = StatementScope.PROCEDURAL
     conditions: List[Expression]
     blocks: List[Block]
     elseBlock: Optional[Block] = None
@@ -1547,7 +1547,7 @@ class CaseContext:
 
 
 class WhenStatement(Statement):
-    requiredScope = StatementScope.PROCEDURAL
+    allowedScope = StatementScope.PROCEDURAL
     switch: Expression
     conditions: List[Expression]
     blocks: List[Block]
@@ -1713,7 +1713,7 @@ class SensitivityList(SyntaxNode):
 
 
 class ProceduralBlock(Statement):
-    requiredScope = StatementScope.NON_PROCEDURAL
+    allowedScope = StatementScope.NON_PROCEDURAL
     sensitivityList: Optional[SensitivityList]
     body: Block
 
@@ -1797,7 +1797,7 @@ class Module(SyntaxNode):
 
 
 class ModuleInstance(Statement):
-    requiredScope = StatementScope.NON_PROCEDURAL
+    allowedScope = StatementScope.NON_PROCEDURAL
     module: Module
     portBindings: dict[str, Expression]
     paramBindings: dict[str, Any]
