@@ -488,6 +488,15 @@ class Expression(SyntaxNode):
         return e
 
 
+    @staticmethod
+    def _FromRaw(e: "RawExpression", frameDepth: int) -> "Expression":
+        if isinstance(e, int):
+            return Const(e, None, frameDepth=frameDepth + 1)
+        if isinstance(e, bool):
+            return Const(e, None, frameDepth=frameDepth + 1)
+        return Expression._CheckType(e)
+
+
     def RenderNested(self, ctx: RenderCtx):
         if self.needParentheses:
             ctx.Write("(")
@@ -496,43 +505,43 @@ class Expression(SyntaxNode):
             ctx.Write(")")
 
 
-    def __ilshift__(self, rhs: "Expression | int") -> "Expression":
+    def __ilshift__(self, rhs: "RawExpression") -> "Expression":
         AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
         return self
 
 
-    def __ifloordiv__(self, rhs: "Expression | int") -> "Expression":
+    def __ifloordiv__(self, rhs: "RawExpression") -> "Expression":
         AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
         return self
 
 
-    def assign(self, rhs: "Expression | int"):
+    def assign(self, rhs: "RawExpression"):
         AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
 
 
-    def bassign(self, rhs: "Expression | int"):
+    def bassign(self, rhs: "RawExpression"):
         AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
 
 
-    def __mod__(self, rhs: "Expression | int") -> "ConcatExpr":
+    def __mod__(self, rhs: "RawExpression") -> "ConcatExpr":
         return ConcatExpr((self, rhs), 1)
 
 
-    def __or__(self, rhs: "Expression | int | SensitivityList") -> "ArithmeticExpr | SensitivityList":
+    def __or__(self, rhs: "RawExpression | SensitivityList") -> "ArithmeticExpr | SensitivityList":
         if isinstance(rhs, SensitivityList):
             return rhs._Combine(self, 1)
         return ArithmeticExpr("|", (self, rhs), 1)
 
 
-    def __and__(self, rhs: "Expression | int") -> "ArithmeticExpr":
+    def __and__(self, rhs: "RawExpression") -> "ArithmeticExpr":
         return ArithmeticExpr("&", (self, rhs), 1)
 
 
-    def __xor__(self, rhs: "Expression | int") -> "ArithmeticExpr":
+    def __xor__(self, rhs: "RawExpression") -> "ArithmeticExpr":
         return ArithmeticExpr("^", (self, rhs), 1)
 
 
-    def xnor(self, rhs: "Expression | int") -> "ArithmeticExpr":
+    def xnor(self, rhs: "RawExpression") -> "ArithmeticExpr":
         return ArithmeticExpr("~^", (self, rhs), 1)
 
 
@@ -570,27 +579,27 @@ class Expression(SyntaxNode):
         return ReductionOperator("~^", self, 1)
 
 
-    def __lt__(self, rhs: "Expression | int") -> "ComparisonExpr":
+    def __lt__(self, rhs: "RawExpression") -> "ComparisonExpr":
         return ComparisonExpr("<", self, rhs, 1)
 
 
-    def __gt__(self, rhs: "Expression | int") -> "ComparisonExpr":
+    def __gt__(self, rhs: "RawExpression") -> "ComparisonExpr":
         return ComparisonExpr(">", self, rhs, 1)
 
 
-    def __le__(self, rhs: "Expression | int") -> "ComparisonExpr":
+    def __le__(self, rhs: "RawExpression") -> "ComparisonExpr":
         return ComparisonExpr("<=", self, rhs, 1)
 
 
-    def __ge__(self, rhs: "Expression | int") -> "ComparisonExpr":
+    def __ge__(self, rhs: "RawExpression") -> "ComparisonExpr":
         return ComparisonExpr(">=", self, rhs, 1)
 
 
-    def __eq__(self, rhs: "Expression | int") -> "ComparisonExpr": # type: ignore
+    def __eq__(self, rhs: "RawExpression") -> "ComparisonExpr": # type: ignore
         return ComparisonExpr("==", self, rhs, 1)
 
 
-    def __ne__(self, rhs: "Expression | int") -> "ComparisonExpr": # type: ignore
+    def __ne__(self, rhs: "RawExpression") -> "ComparisonExpr": # type: ignore
         return ComparisonExpr("!=", self, rhs, 1)
 
 
@@ -598,8 +607,11 @@ class Expression(SyntaxNode):
         return ReplicationOperator(self, count, 1)
 
 
-    def cond(self, ifCase: "Expression | int", elseCase: "Expression | int") -> "ConditionalExpr":
+    def cond(self, ifCase: "RawExpression", elseCase: "RawExpression") -> "ConditionalExpr":
         return ConditionalExpr(self, ifCase, elseCase, 1)
+
+
+RawExpression = Expression | int | bool
 
 
 class Const(Expression):
@@ -611,14 +623,16 @@ class Const(Expression):
     _valuePat = re.compile(r"(?:(\d+)?'([bdoh]))?([\da-f_]+)", re.RegexFlag.IGNORECASE)
 
 
-    def __init__(self, value: str | int, size: Optional[int] = None, *, frameDepth: int):
+    def __init__(self, value: str | int | bool, size: Optional[int] = None, *, frameDepth: int):
         super().__init__(frameDepth + 1)
 
         if isinstance(value, str):
             if size is not None:
                 raise ParseException("Size should not be specified for string value")
             self.value, self.size = Const._ParseStringValue(value)
-
+        elif isinstance(value, bool):
+            self.value = 1 if value else 0
+            self.size = 1
         else:
             self.value = value
             self.size = size
@@ -799,6 +813,7 @@ class Net(Expression):
 
         def _AssignBit(bitIndex: int, frame: traceback.FrameSummary):
             prevFrame = self.assignments[bitIndex]
+            # Just track last assignment for register for now, for some future use.
             if not self.isReg and prevFrame is not None:
                 raise ParseException(
                     f"Wire re-assignment, `{self}[{bitIndex}]` was previously assigned at " +
@@ -976,24 +991,22 @@ class ConcatExpr(Expression):
     # left-most const value with unbound size.
     valueSize: int
 
-    def __init__(self, args: Iterable[Expression | int], frameDepth: int):
+    def __init__(self, args: Iterable[RawExpression], frameDepth: int):
         super().__init__(frameDepth + 1)
         self.args = list(ConcatExpr._FlattenConcat(args, frameDepth + 1))
         self._CalculateSize()
 
 
     @staticmethod
-    def _FlattenConcat(src: Iterable[Expression | int], frameDepth: int) -> Iterator[Expression]:
+    def _FlattenConcat(src: Iterable[RawExpression], frameDepth: int) -> Iterator[Expression]:
         """
         Flatten concatenation of concatenations as much as possible
         """
         for e in src:
             if isinstance(e, ConcatExpr):
                 yield from ConcatExpr._FlattenConcat(e.args, frameDepth + 1)
-            elif isinstance(e, int):
-                yield Const(e, frameDepth=frameDepth + 1)
             else:
-                yield Expression._CheckType(e)
+                yield Expression._FromRaw(e, frameDepth + 1)
 
 
     def _CalculateSize(self):
@@ -1122,7 +1135,7 @@ class ArithmeticExpr(Expression):
     needParentheses = True
 
 
-    def __init__(self, op: str, args: Iterable[Expression | int], frameDepth: int):
+    def __init__(self, op: str, args: Iterable[RawExpression], frameDepth: int):
         super().__init__(frameDepth + 1)
         self.strValue = f"Op({op})"
         self.op = op
@@ -1130,7 +1143,7 @@ class ArithmeticExpr(Expression):
         self.size = self._CalculateSize()
 
 
-    def _FlattenArithmeticExpr(self, src: Iterable[Expression | int], frameDepth: int) -> Iterator[Expression]:
+    def _FlattenArithmeticExpr(self, src: Iterable[RawExpression], frameDepth: int) -> Iterator[Expression]:
         """
         Flatten combine nested expressions as much as possible
         """
@@ -1139,11 +1152,9 @@ class ArithmeticExpr(Expression):
                 if e.op == self.op:
                     yield from self._FlattenArithmeticExpr(e.args, frameDepth + 1)
                 else:
-                    yield Expression._CheckType(e)
-            elif isinstance(e, int):
-                yield Const(e, frameDepth=frameDepth + 1)
+                    yield e
             else:
-                yield Expression._CheckType(e)
+                yield Expression._FromRaw(e, frameDepth + 1)
 
 
     def _CalculateSize(self):
@@ -1190,15 +1201,12 @@ class ComparisonExpr(Expression):
     size = 1
 
 
-    def __init__(self, op: str, lhs: Expression, rhs: Expression | int, frameDepth: int):
+    def __init__(self, op: str, lhs: Expression, rhs: RawExpression, frameDepth: int):
         super().__init__(frameDepth + 1)
         self.strValue = f"Cmp({op})"
         self.op = op
         self.lhs = Expression._CheckType(lhs)
-        if isinstance(rhs, int):
-            self.rhs = Const(rhs, frameDepth=frameDepth + 1)
-        else:
-            self.rhs = Expression._CheckType(rhs)
+        self.rhs = Expression._FromRaw(rhs, frameDepth + 1)
 
 
     def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
@@ -1237,14 +1245,11 @@ class UnaryOperator(Expression):
     arg: Expression
 
 
-    def __init__(self, op: str, arg: Expression | int, frameDepth: int):
+    def __init__(self, op: str, arg: RawExpression, frameDepth: int):
         super().__init__(frameDepth + 1)
         self.strValue = f"Unary({op})"
         self.op = op
-        if isinstance(arg, int):
-            self.arg = Const(arg, frameDepth=frameDepth + 1)
-        else:
-            self.arg = Expression._CheckType(arg)
+        self.arg = Expression._FromRaw(arg, frameDepth + 1)
         self.size = self.arg.size
 
 
@@ -1258,13 +1263,13 @@ class UnaryOperator(Expression):
 
 
 class ReductionOperator(UnaryOperator):
-    def __init__(self, op: str, arg: Expression | int, frameDepth: int):
+    def __init__(self, op: str, arg: RawExpression, frameDepth: int):
         if isinstance(arg, ReductionOperator):
             raise ParseException("Reduction operator applied on another reduction, probably a bug")
         super().__init__(op, arg, frameDepth + 1)
         self.strValue = f"Reduce({op})"
         self.size = 1
-        if isinstance(arg, Expression) and arg.size == 1:
+        if self.arg.size == 1:
             CompileCtx.Current().Warning(f"Reduction operator applied to 1 bit argument {arg}",
                                          self.srcFrame)
 
@@ -1302,18 +1307,12 @@ class ConditionalExpr(Expression):
     needParentheses = True
 
 
-    def __init__(self, condition: Expression, ifCase: Expression | int, elseCase: Expression | int,
+    def __init__(self, condition: Expression, ifCase: RawExpression, elseCase: RawExpression,
                  frameDepth: int):
         super().__init__(frameDepth + 1)
         self.condition = Expression._CheckType(condition)
-        if isinstance(ifCase, int):
-            self.ifCase = Const(ifCase, frameDepth=frameDepth + 1)
-        else:
-            self.ifCase = Expression._CheckType(ifCase)
-        if isinstance(elseCase, int):
-            self.elseCase = Const(elseCase, frameDepth=frameDepth + 1)
-        else:
-            self.elseCase = Expression._CheckType(elseCase)
+        self.ifCase = Expression._FromRaw(ifCase, frameDepth + 1)
+        self.elseCase = Expression._FromRaw(elseCase, frameDepth + 1)
         if self.ifCase.size is not None and self.elseCase.size is not None:
             self.size = self.ifCase.size if self.ifCase.size >= self.elseCase.size else self.elseCase.size
 
@@ -1396,12 +1395,11 @@ class AssignmentStatement(Statement):
     isProceduralBlock: bool
 
 
-    def __init__(self, lhs: Expression, rhs: Expression | int, *, isBlocking: bool, frameDepth: int):
+    def __init__(self, lhs: Expression, rhs: RawExpression, *, isBlocking: bool, frameDepth: int):
         super().__init__(frameDepth + 1)
-        if isinstance(rhs, int):
-            rhs = Const(rhs, frameDepth=frameDepth + 1)
+        rhs = Expression._FromRaw(rhs, frameDepth + 1)
         self.lhs = Expression._CheckType(lhs)
-        self.rhs= Expression._CheckType(rhs)
+        self.rhs = rhs
         self.isBlocking = isBlocking
         self.isProceduralBlock = CompileCtx.Current().isProceduralBlock
         lhs._Wire(True, frameDepth + 1)
@@ -1816,10 +1814,7 @@ class ModuleInstance(Statement):
                 self.paramBindings[name] = e
                 continue
 
-            if isinstance(e, int):
-                e = Const(e, frameDepth=frameDepth + 1)
-            else:
-                e = Expression._CheckType(e)
+            e = Expression._FromRaw(e, frameDepth + 1)
             if name not in module.ports:
                 raise ParseException(f"No such port in module: `{name}`")
             port = module.ports[name]

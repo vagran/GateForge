@@ -2,10 +2,10 @@ import collections.abc
 from typing import List, Optional, Tuple, Type, cast
 from GateForge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, \
     Expression, IfContext, IfStatement, Module, ModuleParameter, Namespace, Net, NetProxy, \
-    ParseException, ProceduralBlock, Reg, SensitivityList, WhenStatement, Wire
+    ParseException, ProceduralBlock, Reg, SensitivityList, WhenStatement, Wire, RawExpression
 
 
-def const(value: str | int, size: Optional[int] = None) -> Const:
+def const(value: str | int | bool, size: Optional[int] = None) -> Const:
     return Const(value, size, frameDepth=1)
 
 
@@ -56,7 +56,7 @@ def always(sensitivityList: SensitivityList | Net | ArithmeticExpr | None = None
     return ProceduralBlock(sl, 1)
 
 
-def cond(condition: Expression, ifCase: Expression | int, elseCase: Expression | int) -> ConditionalExpr:
+def cond(condition: Expression, ifCase: RawExpression, elseCase: RawExpression) -> ConditionalExpr:
     return ConditionalExpr(condition, ifCase, elseCase, 1)
 
 
@@ -84,13 +84,13 @@ def _when(switch: Expression) -> WhenStatement:
     return WhenStatement(switch, 1)
 
 
-def _case(condition: Expression) -> CaseContext:
+def _case(condition: RawExpression) -> CaseContext:
     ctx = CompileCtx.Current()
     block = ctx._blockStack[-2] if len(ctx._blockStack) > 1 else None
     stmt = block.lastStatement if block is not None and len(block) > 0 else None
     if not isinstance(stmt, WhenStatement):
         raise ParseException("No `_when` statement to apply `_case` onto")
-    return stmt._GetContext(condition)
+    return stmt._GetContext(Expression._FromRaw(condition, 1))
 
 
 def _default() -> CaseContext:

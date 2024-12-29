@@ -43,6 +43,12 @@ class TestAssignments(TestBase):
         self.CheckResult("assign w = 'h1;")
 
 
+    def test_continuous_assignment_const_bool(self):
+        w = wire("w")
+        w <<= True
+        self.CheckResult("assign w = 1'h1;")
+
+
     def test_continuous_assignment_const_size_exceeded(self):
         w = wire("w")
         with self.assertRaises(ParseException):

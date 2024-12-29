@@ -45,6 +45,8 @@ class Const(TestBase):
         self.CheckExpr(const("'b100"), "'h4")
         self.CheckExpr(const("'o11"), "'h9")
         self.CheckExpr(const("'d16"), "'h10")
+        self.CheckExpr(const(False), "1'h0")
+        self.CheckExpr(const(True), "1'h1")
 
         self.CheckExpr(const("5'd16"), "5'h10")
 
@@ -224,6 +226,8 @@ class Comparison(TestBase):
 
         self.CheckExpr(w1 == 5, "w1 == 'h5")
         self.CheckExpr(const(5) == w1, "'h5 == w1")
+
+        self.CheckExpr(w1 == True, "w1 == 1'h1")
 
 
 class Replication(TestBase):
