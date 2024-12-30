@@ -24,7 +24,8 @@
                 "cwd": "${workspaceFolder}",
                 "env": {
                     "PYTHONPATH": "${workspaceFolder}/src",
-                    "PYTHONUNBUFFERED": "1"
+                    "PYTHONUNBUFFERED": "1",
+                    "PATH": "${config:env.ossCadSuiteDir}/bin:${env:PATH}"
                 }
             }
         },

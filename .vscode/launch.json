@@ -24,7 +24,8 @@
             "justMyCode": true,
             "cwd": "${workspaceFolder}",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/src"
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "PATH": "${config:env.ossCadSuiteDir}/bin:${env:PATH}"
             },
             "args": ["discover", "-t", "${workspaceFolder}", "-s", "${workspaceFolder}/test"]
         }

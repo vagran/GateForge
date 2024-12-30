@@ -85,7 +85,7 @@ def _CheckIdentifier(s: str):
 
 
 class CompileCtx:
-
+    moduleName: str
     lastFrame: Optional[traceback.FrameSummary] = None
     isProceduralBlock: bool = False
     isInitialBlock = False
@@ -282,6 +282,10 @@ class CompileCtx:
 
     def GetWarnings(self) -> Iterable[WarningMsg]:
         return self._warnings
+
+
+    def GetPortNames(self) -> Iterable[str]:
+        return self._ports.keys()
 
 
     def _RenderModuleDeclaration(self, ctx: "RenderCtx"):

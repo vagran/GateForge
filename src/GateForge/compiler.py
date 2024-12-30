@@ -1,3 +1,4 @@
+import contextlib
 from dataclasses import dataclass
 import importlib.util
 from io import TextIOBase
@@ -6,6 +7,7 @@ import os.path
 from typing import Any, Callable, List, Optional
 
 from GateForge.core import CompileCtx, RenderOptions, WarningMsg
+from GateForge.verilator import SimulationModel, Verilator, VerilatorParams
 
 
 @dataclass
@@ -13,23 +15,48 @@ class CompileResult:
     warnings: List[WarningMsg]
     # Result returned by design module function
     result: Any
+    # Simulation model if verilation requested
+    simulationModel: Optional[SimulationModel]
 
 
 def CompileModule(moduleFunc: Callable[[], Any], outputStream: TextIOBase, *,
                   renderOptions: RenderOptions = RenderOptions(),
                   moduleName: Optional[str] = None,
                   moduleArgs: List[Any] = list(),
-                  moduleKwargs: dict[str, Any] = dict()) -> CompileResult:
+                  moduleKwargs: dict[str, Any] = dict(),
+                  verilatorParams: Optional[VerilatorParams] = None) -> CompileResult:
+    """Compile module into Verilog.
+
+    :param moduleFunc: DSL function which defines the module.
+    :param outputStream: Stream to output resulting Verilog to.
+    :param renderOptions:
+    :param moduleName: Module name, defaults to module function name.
+    :param moduleArgs: Positional arguments to pass to module function.
+    :param moduleKwargs: Keyword arguments to pass to module function.
+    :param verilatorParams: Parameters for Verilator call. Does not produce simulation module if
+        None.
+    :return: CompileResult instance.
+    """
+
     if moduleName is None:
         moduleName = moduleFunc.__name__
     compileCtx = CompileCtx(moduleName)
+    if verilatorParams is not None:
+        verilator = Verilator(verilatorParams, compileCtx)
+    else:
+        verilator = None
     CompileCtx.Open(compileCtx, 1)
-    try:
-        result = moduleFunc(*moduleArgs, **moduleKwargs)
-        compileCtx.Render(outputStream, renderOptions)
-        return CompileResult(warnings=list(compileCtx.GetWarnings()), result=result)
-    finally:
-        CompileCtx.Close()
+    with (verilator if verilator is not None else contextlib.nullcontext()): # type: ignore
+        try:
+            result = moduleFunc(*moduleArgs, **moduleKwargs)
+            compileCtx.Render(outputStream if verilator is None else verilator.GetOutputStream(outputStream),
+                              renderOptions)
+            if verilator is not None:
+                verilator.Build()
+            return CompileResult(warnings=list(compileCtx.GetWarnings()), result=result,
+                                simulationModel=verilator.GetModel() if verilator is not None else None)
+        finally:
+            CompileCtx.Close()
 
 
 def CompileModuleToString(moduleFunc: Callable[[], Any], **kwargs) -> str:
