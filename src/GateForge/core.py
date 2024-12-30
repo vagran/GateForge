@@ -554,6 +554,14 @@ class Expression(SyntaxNode):
         return UnaryOperator("~", self, 1)
 
 
+    def __add__(self, rhs: "RawExpression") -> "ArithmeticExpr":
+        return ArithmeticExpr("+", (self, rhs), 1)
+
+
+    def __sub__(self, rhs: "RawExpression") -> "ArithmeticExpr":
+        return ArithmeticExpr("-", (self, rhs), 1)
+
+
     @property
     def reduce_and(self) -> "ReductionOperator":
         return ReductionOperator("&", self, 1)

@@ -202,6 +202,9 @@ class Arithmetic(TestBase):
         self.CheckExpr(w1.xnor(w2.reduce_and), "w1 ~^ &w2")
         self.CheckExpr(w1 | (w2 | w3).reduce_nand | w4, "w1 | ~&(w2 | w3) | w4")
 
+        self.CheckExpr(w1 + w2, "w1 + w2")
+        self.CheckExpr(w1 - w2, "w1 - w2")
+
         self.CheckExpr(w1.reduce_or | w2.reduce_nor | w3.reduce_xor | w4.reduce_xnor,
                        "|w1 | ~|w2 | ^w3 | ~^w4", 3)
 
