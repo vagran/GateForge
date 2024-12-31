@@ -30,6 +30,8 @@ class WarningMsg:
 class RenderOptions:
     indent: str = "    "
     sourceMap: bool = False
+    # Add "`default_nettype none" in prologue
+    prohibitUndeclaredNets: bool = True
 
 
 _identPat = re.compile(r"[a-z_][a-z_$\d]*", re.RegexFlag.IGNORECASE)
@@ -268,6 +270,9 @@ class CompileCtx:
         ctx = RenderCtx()
         ctx.options = renderOptions
         ctx.output = output
+
+        if renderOptions.prohibitUndeclaredNets:
+            ctx.Write("`default_nettype none\n")
 
         ctx.renderDecl = True
         self._RenderModuleDeclaration(ctx)

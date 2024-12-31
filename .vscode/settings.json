@@ -12,6 +12,7 @@
         "localparam",
         "nand",
         "negedge",
+        "nettype",
         "posedge",
         "Synthesizable",
         "ulonglong",

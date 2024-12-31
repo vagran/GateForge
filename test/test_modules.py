@@ -2,7 +2,7 @@ import io
 import unittest
 
 from GateForge.compiler import CompileModule, CompileModuleToString
-from GateForge.core import ParseException
+from GateForge.core import ParseException, RenderOptions
 from GateForge.dsl import namespace, reg, wire
 
 
@@ -11,7 +11,9 @@ class TestBase(unittest.TestCase):
     def CheckResult(self, moduleFunc, expected: str, expectedWarnings = 0,
                     moduleName = None):
         output = io.StringIO()
-        result = CompileModule(moduleFunc, output, moduleName=moduleName)
+        result = CompileModule(moduleFunc, output,
+                               renderOptions=RenderOptions(prohibitUndeclaredNets=False),
+                               moduleName=moduleName)
         self.assertEqual(output.getvalue(), expected)
         self.assertEqual(len(result.warnings), expectedWarnings)
 
