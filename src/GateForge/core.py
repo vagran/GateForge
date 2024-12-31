@@ -515,6 +515,10 @@ class Expression(SyntaxNode):
             ctx.Write(")")
 
 
+    def __bool__(self):
+        raise ParseException("Use of synthesizable expression in boolean context. Use bitwise operators and dedicated statements.")
+
+
     def __ilshift__(self, rhs: "RawExpression") -> "Expression":
         AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
         return self

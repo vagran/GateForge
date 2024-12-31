@@ -504,6 +504,13 @@ end
                 r <<= 4
 
 
+    def test_bool_context(self):
+        w = wire("w")
+        with self.assertRaises(ParseException):
+            if w:
+                pass
+
+
     def test_when_statement(self):
         r = reg(8, "r")
         w1 = wire("w1")
