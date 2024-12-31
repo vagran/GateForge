@@ -181,6 +181,46 @@ class TestAssignments(TestBase):
             w[3] <<= 1
 
 
+class TestInPlaceOperators(TestBase):
+
+    def test_add(self):
+        w = wire("w")
+        w += 1
+        self.CheckResult("assign w = w + 'h1;")
+
+
+    def test_sub(self):
+        w = wire("w")
+        w -= 1
+        self.CheckResult("assign w = w - 'h1;")
+
+
+    def test_and(self):
+        w1 = wire("w1")
+        w2 = wire("w2")
+        w1 &= w2
+        self.CheckResult("assign w1 = w1 & w2;")
+
+
+    def test_xor(self):
+        w1 = wire("w1")
+        w2 = wire("w2")
+        w1 ^= w2
+        self.CheckResult("assign w1 = w1 ^ w2;")
+
+
+    def test_or_reg(self):
+        r = reg(8, "r")
+        w = wire("w")
+        with always(w.posedge):
+            r |= 4
+        self.CheckResult("""
+always @(posedge w) begin
+    r <= r | 'h4;
+end
+""".strip())
+
+
 class ProceduralBlocks(TestBase):
 
     def test_empty_sl(self):

@@ -562,6 +562,36 @@ class Expression(SyntaxNode):
         return ArithmeticExpr("-", (self, rhs), 1)
 
 
+    def __iadd__(self, rhs: "RawExpression") -> "Expression":
+        AssignmentStatement(self, ArithmeticExpr("+", (self, rhs), 1),
+                            isBlocking=False, frameDepth=1)
+        return self
+
+
+    def __isub__(self, rhs: "RawExpression") -> "Expression":
+        AssignmentStatement(self, ArithmeticExpr("-", (self, rhs), 1),
+                            isBlocking=False, frameDepth=1)
+        return self
+
+
+    def __iand__(self, rhs: "RawExpression") -> "Expression":
+        AssignmentStatement(self, ArithmeticExpr("&", (self, rhs), 1),
+                            isBlocking=False, frameDepth=1)
+        return self
+
+
+    def __ior__(self, rhs: "RawExpression") -> "Expression": # type: ignore
+        AssignmentStatement(self, ArithmeticExpr("|", (self, rhs), 1),
+                            isBlocking=False, frameDepth=1)
+        return self
+
+
+    def __ixor__(self, rhs: "RawExpression") -> "Expression":
+        AssignmentStatement(self, ArithmeticExpr("^", (self, rhs), 1),
+                            isBlocking=False, frameDepth=1)
+        return self
+
+
     @property
     def reduce_and(self) -> "ReductionOperator":
         return ReductionOperator("&", self, 1)
