@@ -156,6 +156,7 @@ class Concat(TestBase):
         self.assertEqual((w1 % w2).size, 9)
         self.assertEqual((w1 % w2 % w3).size, 10)
         self.assertEqual((w1 % w2 % w3 % w4).size, 11)
+        self.assertEqual(len(w1 % w2 % w3 % w4), 11)
 
         e = const(5) % w1
         self.assertIsNone(e.size)
@@ -171,6 +172,9 @@ class Arithmetic(TestBase):
         w2 = wire(8, "w2")
         w3 = wire("w3")
         w4 = wire("w4")
+
+        self.assertEqual(len(w1), 1)
+        self.assertEqual(len(w2), 8)
 
         self.CheckExpr(w1 | w2, "w1 | w2")
         self.CheckExpr(w1 | w2 | w3, "w1 | w2 | w3")
@@ -231,6 +235,10 @@ class Comparison(TestBase):
         self.CheckExpr(const(5) == w1, "'h5 == w1")
 
         self.CheckExpr(w1 == True, "w1 == 1'h1")
+
+        with self.assertRaises(ParseException):
+            if w1 == w2:
+                pass
 
 
 class Replication(TestBase):
