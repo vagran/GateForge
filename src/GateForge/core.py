@@ -519,6 +519,12 @@ class Expression(SyntaxNode):
         raise ParseException("Use of synthesizable expression in boolean context. Use bitwise operators and dedicated statements.")
 
 
+    def __len__(self) -> int:
+        if self.size is None:
+            return 0
+        return self.size
+
+
     def __ilshift__(self, rhs: "RawExpression") -> "Expression":
         AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
         return self
