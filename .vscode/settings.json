@@ -8,6 +8,7 @@
         "endprimitive",
         "endtable",
         "endtask",
+        "gateforge",
         "LDFLAGS",
         "localparam",
         "nand",

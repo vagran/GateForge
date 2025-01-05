@@ -1,7 +1,7 @@
 import inspect
 from typing import Generic, Type, TypeVar
 
-from GateForge.core import NetProxy, Reg, Wire
+from gateforge.core import NetProxy, Reg, Wire
 
 TBus = TypeVar("TBus", bound="Bus")
 TInterface = TypeVar("TInterface", bound="Interface")

@@ -1,6 +1,6 @@
 import collections.abc
 from typing import List, Optional, Tuple, Type, cast
-from GateForge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, \
+from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, \
     Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, Namespace, Net, \
     NetProxy, ParseException, ProceduralBlock, Reg, SensitivityList, WhenStatement, Wire, \
     RawExpression

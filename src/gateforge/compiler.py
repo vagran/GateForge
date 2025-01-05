@@ -6,8 +6,8 @@ import io
 import os.path
 from typing import Any, Callable, List, Optional
 
-from GateForge.core import CompileCtx, RenderOptions, WarningMsg
-from GateForge.verilator import SimulationModel, Verilator, VerilatorParams
+from gateforge.core import CompileCtx, RenderOptions, WarningMsg
+from gateforge.verilator import SimulationModel, Verilator, VerilatorParams
 
 
 @dataclass

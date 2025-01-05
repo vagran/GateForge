@@ -1,8 +1,8 @@
 import io
 import unittest
 
-from GateForge.core import CompileCtx, Expression, ParseException, RenderCtx
-from GateForge.dsl import cond, const, namespace, reg, wire
+from gateforge.core import CompileCtx, Expression, ParseException, RenderCtx
+from gateforge.dsl import cond, const, namespace, reg, wire
 from pathlib import Path
 
 

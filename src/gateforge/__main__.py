@@ -1,12 +1,12 @@
 import argparse
 import sys
 
-from GateForge.compiler import CompileModuleByPath
-from GateForge.core import RenderOptions
+from gateforge.compiler import CompileModuleByPath
+from gateforge.core import RenderOptions
 
 
 def Main():
-    parser = argparse.ArgumentParser(prog="GateForge", description="Hardware synthesis tool")
+    parser = argparse.ArgumentParser(prog="python -m gateforge", description="Hardware synthesis tool")
 
     parser.add_argument("input", metavar="INPUT_FILE_OR_MODULE", type=str,
                         help="Input top-level module. May be Python module or function in a module "

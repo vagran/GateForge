@@ -1,9 +1,9 @@
 import io
 import unittest
 
-from GateForge.compiler import CompileModule, CompileModuleToString
-from GateForge.core import ParseException, RenderOptions
-from GateForge.dsl import namespace, reg, wire
+from gateforge.compiler import CompileModule, CompileModuleToString
+from gateforge.core import ParseException, RenderOptions
+from gateforge.dsl import namespace, reg, wire
 
 
 class TestBase(unittest.TestCase):

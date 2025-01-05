@@ -2,8 +2,8 @@ import io
 from pathlib import Path
 import unittest
 
-from GateForge.core import CompileCtx, ParseException, RenderCtx
-from GateForge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, initial, \
+from gateforge.core import CompileCtx, ParseException, RenderCtx
+from gateforge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, initial, \
     module, namespace, parameter, reg, wire
 
 

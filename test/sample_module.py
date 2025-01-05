@@ -1,6 +1,6 @@
-from GateForge.concepts import Interface
-from GateForge.core import Reg, Wire
-from GateForge.dsl import _else, _elseif, _if, always, namespace, reg, wire
+from gateforge.concepts import Interface
+from gateforge.core import Reg, Wire
+from gateforge.dsl import _else, _elseif, _if, always, namespace, reg, wire
 
 
 class Shifter:

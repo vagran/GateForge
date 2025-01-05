@@ -1,8 +1,8 @@
 import unittest
 
-from GateForge.concepts import Bus, Interface
-from GateForge.core import CompileCtx, Reg, RenderCtx, Wire
-from GateForge.dsl import reg, wire
+from gateforge.concepts import Bus, Interface
+from gateforge.core import CompileCtx, Reg, RenderCtx, Wire
+from gateforge.dsl import reg, wire
 
 
 class TestBase(unittest.TestCase):

@@ -2,9 +2,9 @@ import io
 from pathlib import Path
 import unittest
 
-from GateForge.compiler import CompileModule
-from GateForge.dsl import wire
-from GateForge.verilator import VerilatorParams
+from gateforge.compiler import CompileModule
+from gateforge.dsl import wire
+from gateforge.verilator import VerilatorParams
 
 
 def SampleModule():
@@ -44,7 +44,7 @@ class TestBasic(TestBase):
         self.ports.in2 = 0
         self.sim.Eval()
         self.assertEqual(self.ports.out1, 0)
-        
+
         self.ports.in1 = 1
         self.sim.Eval()
         self.assertEqual(self.ports.out1, 1)

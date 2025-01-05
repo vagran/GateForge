@@ -6,8 +6,8 @@ import subprocess
 import tempfile
 from typing import List, Optional
 
-from GateForge.core import CompileCtx
-from GateForge.verilator_cpp import CreateCppFile
+from gateforge.core import CompileCtx
+from gateforge.verilator_cpp import CreateCppFile
 
 
 @dataclass
