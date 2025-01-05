@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 from io import TextIOBase
 import threading
-from typing import Any, Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Iterable, Iterator, List, Optional, Tuple, Type
 import traceback
 import re
 import math
@@ -887,13 +887,13 @@ class Net(Expression):
 
 
     @property
-    def input(self) -> "NetProxy":
-        return NetProxy(self, False, 1)
+    def input(self) -> "InputNet":
+        return InputNet(self, 1)
 
 
     @property
-    def output(self) -> "NetProxy":
-        return NetProxy(self, True, 1)
+    def output(self) -> "OutputNet":
+        return OutputNet(self, 1)
 
 
     @property
@@ -966,22 +966,57 @@ class NetProxy(Net):
 
 
     @property
-    def input(self) -> "NetProxy":
+    def input(self) -> "InputNet":
         if self.isOutput:
-            return NetProxy(self.src, False, 1)
-        return self
+            return InputNet(self.src, 1)
+        return self # type: ignore
 
 
     @property
-    def output(self) -> "NetProxy":
+    def output(self) -> "OutputNet":
         if self.isOutput:
-            return self
+            return self # type: ignore
         raise ParseException(f"Cannot use input net as output: {self}")
 
 
     @property
     def port(self) -> "Port":
         return Port(self, 1)
+
+
+class NetMarkerType:
+    netType: Type[Wire] | Type[Reg]
+    isOutput: bool
+
+    def __init__(self, netType: Type[Wire] | Type[Reg], isOutput: bool):
+        self.netType = netType
+        self.isOutput = isOutput
+
+
+class OutputNet(NetProxy):
+    isOutput = True
+
+
+    def __init__(self, src, frameDepth):
+        super().__init__(src, True, frameDepth + 1)
+
+
+    # For allowing syntax `myNet: OutputNet[Wire]`
+    def __class_getitem__(cls, netType: Type[Wire] | Type[Reg]) -> Type[Wire] | Type[Reg]:
+        # Make mypy think its Wire or Reg in user code.
+        return NetMarkerType(netType, True) # type: ignore
+
+
+class InputNet(NetProxy):
+    isOutput = False
+
+
+    def __init__(self, src, frameDepth):
+        super().__init__(src, False, frameDepth + 1)
+
+
+    def __class_getitem__(cls, netType: Type[Wire] | Type[Reg]) -> Type[Wire] | Type[Reg]:
+        return NetMarkerType(netType, False) # type: ignore
 
 
 class Port(Net):
@@ -1031,15 +1066,15 @@ class Port(Net):
 
 
     @property
-    def input(self) -> "NetProxy":
-        return NetProxy(self, False, 1)
+    def input(self) -> "InputNet":
+        return InputNet(self, 1)
 
 
     @property
-    def output(self) -> "NetProxy":
+    def output(self) -> "OutputNet":
         if not self.isOutput:
             raise ParseException(f"Cannot use input port as output: {self}")
-        return NetProxy(self, True, 1)
+        return OutputNet(self, 1)
 
 
 class ConcatExpr(Expression):
