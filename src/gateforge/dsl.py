@@ -1,4 +1,3 @@
-import collections.abc
 from typing import List, Optional, Tuple, Type, cast
 from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, \
     Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, Namespace, Net, \
@@ -20,15 +19,8 @@ def _CreateNet(isReg: bool,
             if name is not None:
                 raise ParseException("Name specified twice")
             name = sizeOrName
-        elif isinstance(sizeOrName, int):
-            size = sizeOrName
         else:
-            if not isinstance(sizeOrName, collections.abc.Sequence):
-                raise ParseException("Sequence expected for net indices range")
-            idxHigh, baseIndex = sizeOrName # type: ignore
-            if idxHigh < baseIndex:
-                raise ParseException(f"Bad net indices range, {idxHigh} < {baseIndex}")
-            size = idxHigh - baseIndex + 1
+            size, baseIndex = Net._ParseSize(sizeOrName)
 
     ctr: Type[Reg | Wire] = Reg if isReg else Wire
     return ctr(size=size, baseIndex=baseIndex, isReg=isReg, name=name, frameDepth=2)

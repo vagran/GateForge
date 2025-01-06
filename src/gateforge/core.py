@@ -1,3 +1,4 @@
+import collections
 from dataclasses import dataclass
 from enum import Enum
 from io import TextIOBase
@@ -906,6 +907,22 @@ class Net(Expression):
         return EdgeTrigger(self, False, 1)
 
 
+    @staticmethod
+    def _ParseSize(sizeSpec: int | List[int] | Tuple[int] | None) -> Tuple[int, int]:
+        size = 1
+        baseIndex = 0
+        if sizeSpec is not None:
+            if isinstance(sizeSpec, int):
+                size = sizeSpec
+            else:
+                if not isinstance(sizeSpec, collections.abc.Sequence):
+                    raise ParseException("Sequence expected for net indices range")
+                idxHigh, baseIndex = sizeSpec # type: ignore
+                if idxHigh < baseIndex:
+                    raise ParseException(f"Bad net indices range, {idxHigh} < {baseIndex}")
+                size = idxHigh - baseIndex + 1
+        return size, baseIndex
+
 
 class Wire(Net):
     isReg = False
@@ -984,12 +1001,25 @@ class NetProxy(Net):
         return Port(self, 1)
 
 
+NetMarkerArgType = Type[Wire] | Type[Reg] | Tuple[Type[Wire] | Type[Reg],
+                                                  int | List[int] | Tuple[int]]
+
+
 class NetMarkerType:
     netType: Type[Wire] | Type[Reg]
     isOutput: bool
+    size: int = 1
+    baseIndex: int = 0
+    sizeSpecified = False
 
-    def __init__(self, netType: Type[Wire] | Type[Reg], isOutput: bool):
-        self.netType = netType
+    def __init__(self, netType: NetMarkerArgType, isOutput: bool):
+        if netType is Wire or netType is Reg:
+            self.netType = netType # type: ignore
+        else:
+            self.netType = netType[0] # type: ignore
+            self.size, self.baseIndex = Net._ParseSize(netType[1]) # type: ignore
+            self.sizeSpecified = True
+
         self.isOutput = isOutput
 
 
@@ -1002,7 +1032,7 @@ class OutputNet(NetProxy):
 
 
     # For allowing syntax `myNet: OutputNet[Wire]`
-    def __class_getitem__(cls, netType: Type[Wire] | Type[Reg]) -> Type[Wire] | Type[Reg]:
+    def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]:
         # Make mypy think its Wire or Reg in user code.
         return NetMarkerType(netType, True) # type: ignore
 
@@ -1015,7 +1045,7 @@ class InputNet(NetProxy):
         super().__init__(src, False, frameDepth + 1)
 
 
-    def __class_getitem__(cls, netType: Type[Wire] | Type[Reg]) -> Type[Wire] | Type[Reg]:
+    def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]:
         return NetMarkerType(netType, False) # type: ignore
 
 
