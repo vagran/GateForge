@@ -369,6 +369,11 @@ class SyntaxNode:
         return f"{frame.filename}:{frame.lineno}"
 
 
+    @staticmethod
+    def GetSourceMapEntry(frame: traceback.FrameSummary) -> str:
+        return f"file://{frame.filename}#{frame.lineno}"
+
+
     @property
     def location(self) -> str:
         return SyntaxNode.GetLocation(self.srcFrame)
@@ -377,6 +382,11 @@ class SyntaxNode:
     @property
     def fullLocation(self) -> str:
         return SyntaxNode.GetFullLocation(self.srcFrame)
+
+
+    @property
+    def sourceMapEntry(self) -> str:
+        return SyntaxNode.GetSourceMapEntry(self.srcFrame)
 
 
     def __str__(self) -> str:
@@ -536,12 +546,12 @@ class Expression(SyntaxNode):
         return self
 
 
-    def assign(self, rhs: "RawExpression"):
-        AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
+    def assign(self, rhs: "RawExpression", *, frameDepth=0):
+        AssignmentStatement(self, rhs, isBlocking=False, frameDepth=frameDepth + 1)
 
 
-    def bassign(self, rhs: "RawExpression"):
-        AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
+    def bassign(self, rhs: "RawExpression", *, frameDepth=0):
+        AssignmentStatement(self, rhs, isBlocking=True, frameDepth=frameDepth + 1)
 
 
     def __mod__(self, rhs: "RawExpression") -> "ConcatExpr":
@@ -844,7 +854,7 @@ class Net(Expression):
         if ctx.renderDecl:
             # Port render method prepends this declaration
             if ctx.options.sourceMap and type(self) is not Port:
-                ctx.Write(f"// {self.fullLocation}\n")
+                ctx.Write(f"// {self.sourceMapEntry}\n")
                 ctx.WriteIndent(self.indent)
             s = "reg" if self.isReg else "wire"
             assert self.size is not None
@@ -1086,7 +1096,7 @@ class Port(Net):
     def Render(self, ctx: RenderCtx):
         if ctx.renderDecl:
             if ctx.options.sourceMap:
-                ctx.Write(f"// {self.fullLocation}\n")
+                ctx.Write(f"// {self.sourceMapEntry}\n")
                 ctx.WriteIndent(self.indent)
             ctx.Write("output" if self.src.isOutput else "input")
             ctx.Write(" ")
@@ -1505,7 +1515,7 @@ class Block(SyntaxNode):
         for stmt in self._statements:
             if ctx.options.sourceMap:
                 ctx.WriteIndent(stmt.indent)
-                ctx.Write(f"// {stmt.fullLocation}\n")
+                ctx.Write(f"// {stmt.sourceMapEntry}\n")
             ctx.WriteIndent(stmt.indent)
             stmt.Render(ctx)
             ctx.Write("\n")

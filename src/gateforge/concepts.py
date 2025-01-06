@@ -56,9 +56,9 @@ class Bus(Generic[TBus]):
                 raise ParseException(f"No bus net `{name}`")
             net = getattr(self, name)
             if net.isOutput:
-                net <<= value
+                net.assign(value, frameDepth=1)
             else:
-                value <<= net
+                value.assign(net, frameDepth=1) # type: ignore
 
 
     def Construct(self, **kwargs: NetProxy):
@@ -71,14 +71,15 @@ class Bus(Generic[TBus]):
 
     @classmethod
     def _Create(cls: Type[TBus], *, _isAdjacent: bool = False,  _isDefault: bool = False,
-                **kwargs: NetProxy) -> TBus:
+                _frameDepth: int = 1, **kwargs: NetProxy) -> TBus:
         bus = cls.__new__(cls)
-        bus._Construct(_isAdjacent=_isAdjacent, _isDefault=_isDefault, **kwargs)
+        bus._Construct(_isAdjacent=_isAdjacent, _isDefault=_isDefault, _frameDepth=_frameDepth + 1,
+                       **kwargs)
         return bus
 
 
     def _Construct(self, *, _isAdjacent: bool = False, _isDefault: bool = False,
-                   **kwargs: NetProxy):
+                   _frameDepth: int = 1, **kwargs: NetProxy):
         if _isAdjacent and _isDefault:
             raise Exception("Adjacent and default flags cannot be set simultaneously")
         annotations = inspect.get_annotations(type(self))
@@ -89,7 +90,7 @@ class Bus(Generic[TBus]):
             if name not in kwargs:
                 if _isDefault:
                     net = netCls.netType(size=netCls.size, baseIndex=netCls.baseIndex,
-                                         isReg=netCls is Reg, name=name, frameDepth=2)
+                                         isReg=netCls is Reg, name=name, frameDepth=_frameDepth + 1)
                     value = net.output if netCls.isOutput else net.input
                     setattr(self, name, value)
                     continue
@@ -130,7 +131,7 @@ class Interface(Bus[TInterface]):
 
     @classmethod
     def Create(cls: Type[TInterface], **kwargs: NetProxy) -> TInterface:
-        iface = super(Interface, cls).Create(**kwargs)
+        iface = super(Interface, cls)._Create(**kwargs)
         iface.internal = iface
         iface.external = iface.Adjacent()
         return iface
@@ -138,19 +139,19 @@ class Interface(Bus[TInterface]):
 
     @classmethod
     def CreateDefault(cls: Type[TInterface], **kwargs: NetProxy) -> TInterface:
-        iface = super(Interface, cls).CreateDefault(**kwargs)
+        iface = super(Interface, cls)._Create(_isDefault=True, **kwargs)
         iface.internal = iface
         iface.external = iface.Adjacent()
         return iface
 
 
     def Construct(self, **kwargs: NetProxy):
-        super().Construct(**kwargs)
+        super()._Construct(**kwargs)
         self.internal = self # type: ignore
         self.external = self.Adjacent()
 
 
     def ConstructDefault(self, **kwargs: NetProxy):
-        super().ConstructDefault(**kwargs)
+        super()._Construct(_isDefault=True, **kwargs)
         self.internal = self # type: ignore
         self.external = self.Adjacent()
