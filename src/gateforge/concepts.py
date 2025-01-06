@@ -1,7 +1,7 @@
 import inspect
 from typing import Generic, Type, TypeVar
 
-from gateforge.core import RawExpression, NetMarkerType, NetProxy, ParseException, Reg, Wire
+from gateforge.core import Port, RawExpression, NetMarkerType, NetProxy, ParseException, Reg
 
 TBus = TypeVar("TBus", bound="Bus")
 TInterface = TypeVar("TInterface", bound="Interface")
@@ -95,9 +95,11 @@ class Bus(Generic[TBus]):
                     continue
                 raise ParseException(f"Bus net `{name}` has not been specified")
             value = kwargs[name]
+            if isinstance(value, Port):
+                value = value.output if value.isOutput else value.input
             if not isinstance(value, NetProxy):
                 raise ParseException(
-                    f"`NetProxy` instance expected for net `{name}`, has `{type(value).__name__}")
+                    f"`NetProxy` or `Port` instance expected for net `{name}`, has `{type(value).__name__}")
             if netCls.netType is not Reg and value.isReg:
                 raise ParseException(f"Expected `Wire` for net `{name}`, has `Reg`")
             if netCls.netType is Reg and not value.isReg:

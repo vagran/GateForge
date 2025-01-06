@@ -1,7 +1,8 @@
 import unittest
 
 from gateforge.concepts import Bus, Interface
-from gateforge.core import CompileCtx, InputNet, OutputNet, ParseException, Reg, RenderCtx, Wire
+from gateforge.core import CompileCtx, InputNet, OutputNet, ParseException, Port, Reg, RenderCtx, \
+    Wire
 from gateforge.dsl import reg, wire
 
 
@@ -56,6 +57,14 @@ class TestBus(TestBase):
         b = SampleBus.Create(w=wire().input, r=reg().output)
         self.assertIsInstance(b.w.src, Wire)
         self.assertIsInstance(b.r.src, Reg)
+        self.assertEqual(b.w.effectiveName, "w")
+        self.assertEqual(b.r.effectiveName, "r")
+
+
+    def test_ports(self):
+        b = SampleBus.Create(w=wire().input, r=reg("r").output.port)
+        self.assertIsInstance(b.w.src, Wire)
+        self.assertIsInstance(b.r.src, Port)
         self.assertEqual(b.w.effectiveName, "w")
         self.assertEqual(b.r.effectiveName, "r")
 
@@ -207,6 +216,28 @@ class TestInterface(TestBase):
         self.assertIsInstance(i.external.w.src, Wire)
         self.assertIsInstance(i.external.r, InputNet)
         self.assertIsInstance(i.external.r.src, Reg)
+        self.assertTrue(i.external.w.isOutput)
+        self.assertFalse(i.external.r.isOutput)
+
+
+    def test_port(self):
+        i = SampleInterface.Create(w=wire().input, r=reg("r").output.port)
+        self.assertIsInstance(i.w, InputNet)
+        self.assertIsInstance(i.w.src, Wire)
+        self.assertIsInstance(i.r, OutputNet)
+        self.assertIsInstance(i.r.src, Port)
+
+        self.assertIsInstance(i.internal.w, InputNet)
+        self.assertIsInstance(i.internal.w.src, Wire)
+        self.assertIsInstance(i.internal.r, OutputNet)
+        self.assertIsInstance(i.internal.r.src, Port)
+        self.assertFalse(i.internal.w.isOutput)
+        self.assertTrue(i.internal.r.isOutput)
+
+        self.assertIsInstance(i.external.w, OutputNet)
+        self.assertIsInstance(i.external.w.src, Wire)
+        self.assertIsInstance(i.external.r, InputNet)
+        self.assertIsInstance(i.external.r.src, Port)
         self.assertTrue(i.external.w.isOutput)
         self.assertFalse(i.external.r.isOutput)
 
