@@ -73,14 +73,14 @@ class TestAssignments(TestBase):
         r = reg(8, "r")
         w = wire(16, "w")
         r <<= w[11:4]
-        self.CheckResult("assign r = w[11:4];")
+        self.CheckResult("assign r = w[11:4];", 1)
 
 
     def test_continuous_assignment_reg_wire_slice_less_bits(self):
         r = reg(8, "r")
         w = wire(16, "w")
         r <<= w[11:5]
-        self.CheckResult("assign r = w[11:5];", 1)
+        self.CheckResult("assign r = w[11:5];", 2)
 
 
     def test_continuous_assignment_reg_wire_slice_more_bits(self):

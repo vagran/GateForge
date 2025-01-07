@@ -1050,18 +1050,13 @@ class OutputNet(Generic[TNet], NetProxy):
         return NetMarkerType(netType, True) # type: ignore
 
 
-    # In-place assignment stub methods below are needed to make type checked happy. Should never be
-    # actually called.
-    def _StubException(self) -> "OutputNet":
-        raise Exception("Should not be used")
-
-
+    # In-place assignment methods below are overridden to make type checked happy.
     def __ilshift__(self, rhs: "RawExpression") -> "OutputNet":
-        return self._StubException()
+        return super().__ilshift__(rhs) # type: ignore
 
 
     def __ifloordiv__(self, rhs: "RawExpression") -> "OutputNet":
-        return self._StubException()
+        return super().__ifloordiv__(rhs) # type: ignore
 
 
 class InputNet(Generic[TNet], NetProxy):
@@ -1559,10 +1554,15 @@ class AssignmentStatement(Statement):
         rhs._Wire(False, frameDepth + 1)
         lhs._Assign(None, frameDepth + 1)
 
-        if self.isProceduralBlock and not self.isBlocking:
+        if self.isProceduralBlock:
+            if not self.isBlocking:
+                for e in self.lhs._GetLeafNodes():
+                    if isinstance(e, Net) and not e.isReg:
+                        raise ParseException(f"Procedural assignment to wire {e}")
+        else:
             for e in self.lhs._GetLeafNodes():
-                if isinstance(e, Net) and not e.isReg:
-                    raise ParseException(f"Procedural assignment to wire {e}")
+                if isinstance(e, Net) and e.isReg:
+                    ctx.Warning(f"Continuous assignment to register {e}", self.srcFrame)
 
         assert lhs.size is not None
         if rhs.size is not None:

@@ -23,15 +23,15 @@ class Test(TestBase):
     def test_single_in_out(self):
 
         def TestModule():
-            _in = wire("in").input.port
-            _out = reg("out").output.port
+            _in = reg("in").input.port
+            _out = wire("out").output.port
 
             _out <<= _in
 
         self.CheckResult(TestModule, """
 module TestModule(
-    input wire in,
-    output reg out);
+    input reg in,
+    output wire out);
 
 assign out = in;
 endmodule
@@ -49,16 +49,16 @@ endmodule
             wOut <<= wIn & w
 
             with namespace("TestNs"):
-                _in = wire("in").input.port
+                _in = reg("in").input.port
                 with namespace("Internal"):
-                    _out = reg("out").output.port
+                    _out = wire("out").output.port
 
             _out <<= _in
 
         self.CheckResult(TestModule, """
 module TestModule(
-    input wire TestNs_in,
-    output reg TestNs_Internal_out);
+    input reg TestNs_in,
+    output wire TestNs_Internal_out);
 wire in;
 wire out;
 wire NS_w;
@@ -72,15 +72,15 @@ endmodule
     def test_chained_proxy(self):
 
         def TestModule():
-            _in = wire("in").input.port.input.input
-            _out = reg("out").output.port.output.output
+            _in = reg("in").input.port.input.input
+            _out = wire("out").output.port.output.output
 
             _out <<= _in
 
         self.CheckResult(TestModule, """
 module TestModule(
-    input wire in,
-    output reg out);
+    input reg in,
+    output wire out);
 
 assign out = in;
 endmodule
@@ -125,8 +125,8 @@ endmodule
     def test_port_wire_name_collision(self):
 
         def TestModule():
-            _in = wire("in").input.port
-            _out = reg("out").output.port
+            _in = reg("in").input.port
+            _out = wire("out").output.port
             r = reg("in")
             w = wire("out")
 
@@ -135,8 +135,8 @@ endmodule
 
         self.CheckResult(TestModule, """
 module TestModule(
-    input wire in,
-    output reg out);
+    input reg in,
+    output wire out);
 reg in_1;
 wire out_0;
 
@@ -149,15 +149,15 @@ endmodule
     def test_module_name(self):
 
         def TestModule():
-            _in = wire("in").input.port
-            _out = reg("out").output.port
+            _in = reg("in").input.port
+            _out = wire("out").output.port
 
             _out <<= _in
 
         self.CheckResult(TestModule, """
 module RenamedModule(
-    input wire in,
-    output reg out);
+    input reg in,
+    output wire out);
 
 assign out = in;
 endmodule
@@ -168,23 +168,23 @@ endmodule
 
         def TestModule():
             w1 = wire("w1").output.port
-            w2 = wire("w2").input.port
+            r2 = reg("r2").input.port
             r3 = reg("r3").input.port
-            r4 = reg("r4").output.port
+            w4 = wire("w4").output.port
             w5 = wire(8, "w5").input.port
-            w1 <<= w2 == r3
-            r4 <<= w2 == w5
+            w1 <<= r2 == r3
+            w4 <<= r2 == w5
 
         self.CheckResult(TestModule, """
 module TestModule(
+    input reg r2,
     input reg r3,
-    output reg r4,
     output wire w1,
-    input wire w2,
+    output wire w4,
     input wire[7:0] w5);
 
-assign w1 = w2 == r3;
-assign r4 = w2 == w5;
+assign w1 = r2 == r3;
+assign w4 = r2 == w5;
 endmodule
 """.lstrip(), 1)
 
