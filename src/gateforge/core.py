@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from io import TextIOBase
 import threading
-from typing import Any, Iterable, Iterator, List, Optional, Tuple, Type
+from typing import Any, Generic, Iterable, Iterator, List, Optional, Tuple, Type, TypeVar
 import traceback
 import re
 import math
@@ -1012,7 +1012,7 @@ class NetProxy(Net):
 
 
 NetMarkerArgType = Type[Wire] | Type[Reg] | Tuple[Type[Wire] | Type[Reg],
-                                                  int | List[int] | Tuple[int]]
+                    int | List[int] | Tuple[int]]
 
 
 class NetMarkerType:
@@ -1033,7 +1033,10 @@ class NetMarkerType:
         self.isOutput = isOutput
 
 
-class OutputNet(NetProxy):
+TNet = TypeVar("TNet", Wire, Reg)
+
+
+class OutputNet(Generic[TNet], NetProxy):
     isOutput = True
 
 
@@ -1041,13 +1044,27 @@ class OutputNet(NetProxy):
         super().__init__(src, True, frameDepth + 1)
 
 
-    # For allowing syntax `myNet: OutputNet[Wire]`
+    # For allowing syntax `myNet: OutputNet[Wire]`, or `OutputNet[Wire, 8]`
     def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]:
         # Make mypy think its Wire or Reg in user code.
         return NetMarkerType(netType, True) # type: ignore
 
 
-class InputNet(NetProxy):
+    # In-place assignment stub methods below are needed to make type checked happy. Should never be
+    # actually called.
+    def _StubException(self) -> "OutputNet":
+        raise Exception("Should not be used")
+
+
+    def __ilshift__(self, rhs: "RawExpression") -> "OutputNet":
+        return self._StubException()
+
+
+    def __ifloordiv__(self, rhs: "RawExpression") -> "OutputNet":
+        return self._StubException()
+
+
+class InputNet(Generic[TNet], NetProxy):
     isOutput = False
 
 

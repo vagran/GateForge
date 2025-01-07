@@ -1,7 +1,3 @@
 [*.py]
 indent_style = space
 indent_size = 4
-
-[*.prompt]
-indent_style = space
-indent_size = 2
