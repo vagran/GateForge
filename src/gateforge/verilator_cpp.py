@@ -4,22 +4,55 @@ from typing import List
 
 template = """
 #include <verilated.h>
+#include <verilated_vcd_c.h>
 #include <V{moduleName}.h>
 
 class Context {{
 public:
     VerilatedContext ctx;
     std::unique_ptr<V{moduleName}> module;
+    std::unique_ptr<VerilatedVcdC> vcd;
 
     Context():
         module(new V{moduleName}(&ctx))
-    {{
-
-    }}
+    {{}}
 
     ~Context()
     {{
         module->final();
+        if (vcd) {{
+            vcd->close();
+        }}
+    }}
+
+    void
+    OpenVcd(const char *path)
+    {{
+        if (vcd) {{
+            CloseVcd();
+        }}
+        Verilated::traceEverOn(true);
+        vcd = std::make_unique<VerilatedVcdC>();
+        module->trace(vcd.get(), 99);
+        vcd->open(path);
+    }}
+
+    void
+    CloseVcd()
+    {{
+        if (!vcd) {{
+            return;
+        }}
+        vcd->close();
+        vcd = nullptr;
+    }}
+
+    void
+    DumpVcd()
+    {{
+        if (vcd) {{
+            vcd->dump(ctx.time());
+        }}
     }}
 }};
 
@@ -36,6 +69,15 @@ Eval(Context *ctx);
 
 void
 TimeInc(Context *ctx, uint64_t add);
+
+void
+OpenVcd(Context *ctx, const char *path);
+
+void
+CloseVcd(Context *ctx);
+
+void
+DumpVcd(Context *ctx);
 
 {getters}
 
@@ -65,6 +107,24 @@ void
 TimeInc(Context *ctx, uint64_t add)
 {{
     ctx->ctx.timeInc(add);
+}}
+
+void
+OpenVcd(Context *ctx, const char *path)
+{{
+    ctx->OpenVcd(path);
+}}
+
+void
+CloseVcd(Context *ctx)
+{{
+    ctx->CloseVcd();
+}}
+
+void
+DumpVcd(Context *ctx)
+{{
+    ctx->DumpVcd();
 }}
 
 {gettersImpl}

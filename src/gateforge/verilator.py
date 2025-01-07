@@ -41,6 +41,9 @@ class SimulationModel:
         self._lib.Destruct.argtypes = [ctypes.c_void_p]
         self._lib.Eval.argtypes = [ctypes.c_void_p]
         self._lib.TimeInc.argtypes = [ctypes.c_void_p, ctypes.c_ulonglong]
+        self._lib.OpenVcd.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        self._lib.CloseVcd.argtypes = [ctypes.c_void_p]
+        self._lib.DumpVcd.argtypes = [ctypes.c_void_p]
 
         self.ports = self._CreatePorts()
 
@@ -72,12 +75,40 @@ class SimulationModel:
         return Ports()
 
 
+    def _CheckCtx(self):
+        if self._ctx is None:
+            raise Exception("Using closed context")
+
+
+    def Close(self):
+        self._CheckCtx()
+        self._lib.Destruct(self._ctx)
+        self._ctx = None
+
+
     def Eval(self):
+        self._CheckCtx()
         self._lib.Eval(self._ctx)
 
 
     def TimeInc(self, add: int):
+        self._CheckCtx()
         self._lib.TimeInc(self._ctx, add)
+
+
+    def OpenVcd(self, path):
+        self._CheckCtx()
+        self._lib.OpenVcd(self._ctx, str(path).encode())
+
+
+    def CloseVcd(self):
+        self._CheckCtx()
+        self._lib.CloseVcd(self._ctx)
+
+
+    def DumpVcd(self):
+        self._CheckCtx()
+        self._lib.DumpVcd(self._ctx)
 
 
 class Verilator:
@@ -132,7 +163,7 @@ class Verilator:
         CreateCppFile(cppFilePath, self.compileCtx.moduleName, self.compileCtx.GetPortNames())
 
         verilatorExe = self.params.verilatorPath if self.params.verilatorPath is not None else "verilator"
-        args = [verilatorExe, "--binary", "--Mdir", str(self.buildDir / "obj"),
+        args = [verilatorExe, "--binary", "--trace", "--Mdir", str(self.buildDir / "obj"),
                 "-j", "0",
                 "-CFLAGS", "-fPIC -shared", "-LDFLAGS", "-fPIC -shared",
                 str(self.modulePath), str(cppFilePath)]
