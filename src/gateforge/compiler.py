@@ -49,6 +49,7 @@ def CompileModule(moduleFunc: Callable[[], Any], outputStream: TextIOBase, *,
     with (verilator if verilator is not None else contextlib.nullcontext()): # type: ignore
         try:
             result = moduleFunc(*moduleArgs, **moduleKwargs)
+            compileCtx.Finish()
             compileCtx.Render(outputStream if verilator is None else verilator.GetOutputStream(outputStream),
                               renderOptions)
             if verilator is not None:

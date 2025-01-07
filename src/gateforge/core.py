@@ -264,6 +264,10 @@ class CompileCtx:
         self._blockStack.append(Block(frameDepth=frameDepth + 1))
 
 
+    def Finish(self):
+        pass
+
+
     def Render(self, output: TextIOBase, renderOptions: RenderOptions):
         if len(self._blockStack) != 1:
             raise Exception(f"Unexpected block stack size: {len(self._blockStack)}")
