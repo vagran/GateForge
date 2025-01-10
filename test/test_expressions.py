@@ -2,7 +2,7 @@ import io
 import unittest
 
 from gateforge.core import CompileCtx, Expression, ParseException, RenderCtx
-from gateforge.dsl import cond, const, namespace, reg, wire
+from gateforge.dsl import concat, cond, const, namespace, reg, wire
 from pathlib import Path
 
 
@@ -145,6 +145,7 @@ class Concat(TestBase):
         self.CheckExpr(w1 % w2 % w3, "{w1, w2, w3}")
         self.CheckExpr(w1 % w2 % w3 % w4, "{w1, w2, w3, w4}")
         self.CheckExpr(w1 % w2[7:4] % w3 % w4, "{w1, w2[7:4], w3, w4}")
+        self.CheckExpr(concat(w1, w2[7:4], w3, w4), "{w1, w2[7:4], w3, w4}")
 
         self.CheckExpr(const(5) % w2 % w3, "{'h5, w2, w3}")
         with self.assertRaises(ParseException):

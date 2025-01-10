@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple, Type, cast
-from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConditionalExpr, Const, \
+from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConcatExpr, ConditionalExpr, Const, \
     Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, Namespace, Net, \
     NetProxy, ParseException, ProceduralBlock, Reg, SensitivityList, WhenStatement, Wire, \
     RawExpression
@@ -34,6 +34,10 @@ def wire(sizeOrName: int | List[int] | Tuple[int] | str | None = None, /,
 def reg(sizeOrName: int | List[int] | Tuple[int] | str | None = None, /,
         name: Optional[str] = None) -> Reg:
     return cast(Reg, _CreateNet(True, sizeOrName, name))
+
+
+def concat(*items: RawExpression) -> ConcatExpr:
+    return ConcatExpr(items, 1)
 
 
 def always(sensitivityList: SensitivityList | Net | ArithmeticExpr | None = None) -> ProceduralBlock:
