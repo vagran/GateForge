@@ -3,8 +3,8 @@ from pathlib import Path
 import unittest
 
 from gateforge.core import CompileCtx, ParseException, RenderCtx
-from gateforge.dsl import _case, _default, _else, _elseif, _if, _when, always, const, initial, \
-    module, namespace, parameter, reg, wire
+from gateforge.dsl import _case, _default, _else, _elseif, _if, _when, always, always_comb, \
+    always_ff, always_latch, const, initial, module, namespace, parameter, reg, wire
 
 
 class TestBase(unittest.TestCase):
@@ -628,6 +628,65 @@ end
                         r <<= 3
                     with _default():
                         r <<= 4
+
+
+    def test_sv_inferred_comb(self):
+        self.ctx.options.svProceduralBlocks = True
+        w = wire(8, "w")
+        with always():
+            w //= 4
+        self.CheckResult("""
+always_comb begin
+    w = 'h4;
+end
+""".strip())
+
+
+    def test_sv_inferred_ff(self):
+        self.ctx.options.svProceduralBlocks = True
+        r = reg(8, "r")
+        w = wire("w")
+        with always(w.posedge):
+            r <<= 4
+        self.CheckResult("""
+always_ff @(posedge w) begin
+    r <= 'h4;
+end
+""".strip())
+
+
+    def test_comb(self):
+        w = wire(8, "w")
+        with always_comb():
+            w //= 4
+        self.CheckResult("""
+always_comb begin
+    w = 'h4;
+end
+""".strip())
+
+
+    def test_ff(self):
+        r = reg(8, "r")
+        w = wire("w")
+        with always_ff(w.posedge):
+            r <<= 4
+        self.CheckResult("""
+always_ff @(posedge w) begin
+    r <= 'h4;
+end
+""".strip())
+
+
+    def test_latch(self):
+        r = reg(8, "r")
+        with always_latch():
+            r <<= 4
+        self.CheckResult("""
+always_latch begin
+    r <= 'h4;
+end
+""".strip())
 
 
 class InitialBlocks(TestBase):

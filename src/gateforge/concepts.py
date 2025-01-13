@@ -1,7 +1,7 @@
 import inspect
 from typing import Generic, Type, TypeVar
 
-from gateforge.core import Port, RawExpression, NetMarkerType, NetProxy, ParseException, Reg
+from gateforge.core import Net, Port, RawExpression, NetMarkerType, NetProxy, ParseException, Reg
 
 TBus = TypeVar("TBus", bound="Bus")
 TInterface = TypeVar("TInterface", bound="Interface")
@@ -87,6 +87,7 @@ class Bus(Generic[TBus]):
             if not isinstance(netCls, NetMarkerType):
                 raise ParseException(f"Bad type annotation for net `{name}`: `{netCls}`, "
                                      "should be `NetMarkerType[Reg|Wire]`")
+            value: Net
             if name not in kwargs:
                 if _isDefault:
                     net = netCls.netType(size=netCls.size, baseIndex=netCls.baseIndex,
@@ -131,7 +132,7 @@ class Interface(Bus[TInterface]):
 
     @classmethod
     def Create(cls: Type[TInterface], **kwargs: NetProxy) -> TInterface:
-        iface = super(Interface, cls)._Create(**kwargs)
+        iface = super(Interface, cls)._Create(**kwargs) # type: ignore
         iface.internal = iface
         iface.external = iface.Adjacent()
         return iface
@@ -139,19 +140,19 @@ class Interface(Bus[TInterface]):
 
     @classmethod
     def CreateDefault(cls: Type[TInterface], **kwargs: NetProxy) -> TInterface:
-        iface = super(Interface, cls)._Create(_isDefault=True, **kwargs)
+        iface = super(Interface, cls)._Create(_isDefault=True, **kwargs) # type: ignore
         iface.internal = iface
         iface.external = iface.Adjacent()
         return iface
 
 
     def Construct(self, **kwargs: NetProxy):
-        super()._Construct(**kwargs)
+        super()._Construct(**kwargs) # type: ignore
         self.internal = self # type: ignore
         self.external = self.Adjacent()
 
 
     def ConstructDefault(self, **kwargs: NetProxy):
-        super()._Construct(_isDefault=True, **kwargs)
+        super()._Construct(_isDefault=True, **kwargs) # type: ignore
         self.internal = self # type: ignore
         self.external = self.Adjacent()

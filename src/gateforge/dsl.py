@@ -40,7 +40,8 @@ def concat(*items: RawExpression) -> ConcatExpr:
     return ConcatExpr(items, 1)
 
 
-def always(sensitivityList: SensitivityList | Net | ArithmeticExpr | None = None) -> ProceduralBlock:
+def _CreateProceduralBlock(sensitivityList: SensitivityList | Net | ArithmeticExpr | None,
+                           logicType: ProceduralBlock.LogicType) -> ProceduralBlock:
     sl: Optional[SensitivityList]
     if isinstance(sensitivityList, Net):
         sl = SensitivityList(1)
@@ -50,7 +51,23 @@ def always(sensitivityList: SensitivityList | Net | ArithmeticExpr | None = None
         sl = sensitivityList._ToSensitivityList(1)
     else:
         sl = sensitivityList
-    return ProceduralBlock(sl, 1)
+    return ProceduralBlock(sl, logicType, frameDepth=2)
+
+
+def always(sensitivityList: SensitivityList | Net | ArithmeticExpr | None = None) -> ProceduralBlock:
+    return _CreateProceduralBlock(sensitivityList, ProceduralBlock.LogicType.NONE)
+
+
+def always_ff(sensitivityList: SensitivityList | Net | ArithmeticExpr) -> ProceduralBlock:
+    return _CreateProceduralBlock(sensitivityList, ProceduralBlock.LogicType.FF)
+
+
+def always_comb() -> ProceduralBlock:
+    return _CreateProceduralBlock(None, ProceduralBlock.LogicType.COMB)
+
+
+def always_latch() -> ProceduralBlock:
+    return _CreateProceduralBlock(None, ProceduralBlock.LogicType.LATCH)
 
 
 def initial() -> InitialBlock:

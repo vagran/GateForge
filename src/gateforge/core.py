@@ -1,6 +1,6 @@
 import collections
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, auto
 from io import TextIOBase
 import threading
 from typing import Any, Generic, Iterable, Iterator, List, Optional, Tuple, Type, TypeVar
@@ -33,6 +33,9 @@ class RenderOptions:
     sourceMap: bool = False
     # Add "`default_nettype none" in prologue
     prohibitUndeclaredNets: bool = True
+    # use `always_ff` for sequential `always` blocks (edge triggered) and `always_comb` for
+    # combinational ones (with (possibly empty) sensitivity list).
+    svProceduralBlocks: bool = False
 
 
 _identPat = re.compile(r"[a-z_][a-z_$\d]*", re.RegexFlag.IGNORECASE)
@@ -90,7 +93,7 @@ def _CheckIdentifier(s: str):
 class CompileCtx:
     moduleName: str
     lastFrame: Optional[traceback.FrameSummary] = None
-    isProceduralBlock: bool = False
+    proceduralBlock: Optional["ProceduralBlock"] = None
     isInitialBlock = False
 
     _threadLocal = threading.local()
@@ -260,6 +263,11 @@ class CompileCtx:
         return len(self._blockStack) - 1
 
 
+    @property
+    def isProceduralBlock(self) -> bool:
+        return self.proceduralBlock is not None or self.isInitialBlock
+
+
     def _Open(self, frameDepth: int):
         self._blockStack.append(Block(frameDepth=frameDepth + 1))
 
@@ -272,8 +280,7 @@ class CompileCtx:
         if len(self._blockStack) != 1:
             raise Exception(f"Unexpected block stack size: {len(self._blockStack)}")
 
-        ctx = RenderCtx()
-        ctx.options = renderOptions
+        ctx = RenderCtx(renderOptions)
         ctx.output = output
 
         if renderOptions.prohibitUndeclaredNets:
@@ -322,11 +329,15 @@ class CompileCtx:
 
 
 class RenderCtx:
-    options: RenderOptions = RenderOptions()
+    options: RenderOptions
     # Render declaration instead of expression when True
     renderDecl: bool = False
 
     output: TextIOBase
+
+
+    def __init__(self, options: Optional[RenderOptions] = None):
+        self.options = options if options is not None else RenderOptions()
 
 
     def CreateNested(self, output: TextIOBase):
@@ -800,8 +811,10 @@ class Net(Expression):
     initialName: Optional[str] = None
     # Actual name is resolved when wired
     name: str
-    # Bits assignments map
-    assignments: List[Optional[traceback.FrameSummary]]
+    # Bits assignments map, for assignments in procedural blocks
+    procAssignments: List[Optional[traceback.FrameSummary]]
+    # For assignments outside of procedural blocks
+    nonProcAssignments: List[Optional[traceback.FrameSummary]]
 
 
     def __init__(self, *, size: int, baseIndex: Optional[int], isReg: bool, name: Optional[str],
@@ -822,7 +835,8 @@ class Net(Expression):
             self.initialName = name
             self.strValue += f"(`{name}`)"
 
-        self.assignments = [None for i in range(size)]
+        self.procAssignments = [None for i in range(size)]
+        self.nonProcAssignments = [None for i in range(size)]
 
 
     def __getitem__(self, s):
@@ -883,15 +897,27 @@ class Net(Expression):
 
 
     def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+        ctx = CompileCtx.Current()
 
         def _AssignBit(bitIndex: int, frame: traceback.FrameSummary):
-            prevFrame = self.assignments[bitIndex]
-            # Just track last assignment for register for now, for some future use.
-            if not self.isReg and prevFrame is not None:
+            # We cannot properly check for conflict in procedural assignments without analyzing
+            # whole the flow. So just check for conflict with non-procedural continuous assignment.
+            prevProcFrame = self.nonProcAssignments[bitIndex]
+            prevNonProcFrame = self.nonProcAssignments[bitIndex]
+            if prevNonProcFrame is not None:
+                prevFrame = prevNonProcFrame
+            elif not ctx.isProceduralBlock and prevProcFrame is not None:
+                prevFrame = prevProcFrame
+            else:
+                prevFrame = None
+            if prevFrame is not None:
                 raise ParseException(
-                    f"Wire re-assignment, `{self}[{bitIndex}]` was previously assigned at " +
+                    f"Net re-assignment, `{self}[{bitIndex}]` was previously assigned at " +
                     SyntaxNode.GetFullLocation(prevFrame))
-            self.assignments[bitIndex] = frame
+            if ctx.isProceduralBlock:
+                self.procAssignments[bitIndex] = frame
+            else:
+                self.nonProcAssignments[bitIndex] = frame
 
         frame = self.GetFrame(frameDepth + 1)
         if bitIndex is None:
@@ -1242,7 +1268,7 @@ class SliceExpr(Expression):
         if index + size > srcSize:
             raise ParseException(
                 "Slice exceeds source expression size: "
-                f"[{index + size - 1}:{index}] out of {srcSize} bits source")
+                f"[{index + size - 1}:{index}] out of {srcSize} bits source {self.arg}")
 
 
     def __getitem__(self, s):
@@ -1496,10 +1522,10 @@ class Statement(SyntaxNode):
             ctx = CompileCtx.Current()
             if (self.allowedScope.value & StatementScope.NON_PROCEDURAL.value) == 0 and \
                 not ctx.isProceduralBlock:
-                raise ParseException("Statement not allowed in procedural block")
+                raise ParseException("Statement not allowed outside a procedural block")
             if (self.allowedScope.value & StatementScope.PROCEDURAL.value) == 0 and \
                 ctx.isProceduralBlock:
-                raise ParseException("Statement not allowed outside a procedural block")
+                raise ParseException("Statement not allowed in procedural block")
             ctx.PushStatement(self)
 
 
@@ -1543,6 +1569,7 @@ class AssignmentStatement(Statement):
     isBlocking: bool
     isProceduralBlock: bool
     isInitialBlock: bool
+    isCombinationalBlock: bool
 
 
     def __init__(self, lhs: Expression, rhs: RawExpression, *, isBlocking: bool, frameDepth: int):
@@ -1553,7 +1580,7 @@ class AssignmentStatement(Statement):
         self.isBlocking = isBlocking
         ctx = CompileCtx.Current()
         self.isProceduralBlock = ctx.isProceduralBlock
-        self.isInitialBlock= ctx.isInitialBlock
+        self.isInitialBlock = ctx.isInitialBlock
         lhs._Wire(True, frameDepth + 1)
         rhs._Wire(False, frameDepth + 1)
         lhs._Assign(None, frameDepth + 1)
@@ -1870,14 +1897,28 @@ class SensitivityList(SyntaxNode):
 
 
 class ProceduralBlock(Statement):
+    class LogicType(Enum):
+        NONE = auto()
+        COMB = auto()
+        FF = auto()
+        LATCH = auto()
+
+
     allowedScope = StatementScope.NON_PROCEDURAL
     sensitivityList: Optional[SensitivityList]
     body: Block
+    logicType: LogicType
 
 
-    def __init__(self, sensitivityList: Optional[SensitivityList], frameDepth: int):
+
+    def __init__(self, sensitivityList: Optional[SensitivityList], logicType=LogicType.NONE, *,
+                 frameDepth: int):
         super().__init__(frameDepth + 1, deferPush=True)
         self.sensitivityList = sensitivityList
+        self.logicType = logicType
+        if sensitivityList is not None and logicType != ProceduralBlock.LogicType.NONE and \
+            logicType != ProceduralBlock.LogicType.FF:
+            raise Exception(f"Sensitivity list cannot be specified for logic type {logicType}")
 
 
     def __enter__(self):
@@ -1886,14 +1927,14 @@ class ProceduralBlock(Statement):
         if ctx.isProceduralBlock:
             raise ParseException("Nested procedural block")
         ctx.PushBlock(self.body)
-        ctx.isProceduralBlock = True
+        ctx.proceduralBlock = self
 
 
     def __exit__(self, excType, excValue, tb):
         ctx = CompileCtx.Current()
         if ctx.PopBlock() is not self.body:
             raise Exception("Unexpected current block")
-        ctx.isProceduralBlock = False
+        ctx.proceduralBlock = None
         if len(self.body) == 0:
             ctx.Warning(f"Empty procedural block", self.srcFrame)
         else:
@@ -1903,9 +1944,29 @@ class ProceduralBlock(Statement):
 
 
     def Render(self, ctx: RenderCtx):
-        ctx.Write("always @")
+        if self.logicType == ProceduralBlock.LogicType.NONE:
+            if ctx.options.svProceduralBlocks:
+                if self.sensitivityList is None:
+                    ctx.Write("always_comb")
+                else:
+                    ctx.Write("always_ff @")
+            else:
+                ctx.Write("always @")
+        elif self.logicType == ProceduralBlock.LogicType.COMB:
+            ctx.Write("always_comb")
+        elif self.logicType == ProceduralBlock.LogicType.FF:
+            if self.sensitivityList is None:
+                raise ParseException("Sensitivity list not specified for FF block")
+            ctx.Write("always_ff @")
+        elif self.logicType == ProceduralBlock.LogicType.LATCH:
+            ctx.Write("always_latch")
+        else:
+            raise Exception(f"Unhandled logic type: {self.logicType}")
+
         if self.sensitivityList is None:
-            ctx.Write("*")
+            if not ctx.options.svProceduralBlocks and \
+               self.logicType == ProceduralBlock.LogicType.NONE:
+                ctx.Write("*")
         else:
             ctx.Write("(")
             self.sensitivityList.Render(ctx)
@@ -1928,9 +1989,8 @@ class InitialBlock(Statement):
         self.body = Block(1)
         ctx = CompileCtx.Current()
         if ctx.isProceduralBlock:
-            raise ParseException("Nested procedural block")
+            raise ParseException("Nested initial block")
         ctx.PushBlock(self.body)
-        ctx.isProceduralBlock = True
         ctx.isInitialBlock = True
 
 
@@ -1938,7 +1998,6 @@ class InitialBlock(Statement):
         ctx = CompileCtx.Current()
         if ctx.PopBlock() is not self.body:
             raise Exception("Unexpected current block")
-        ctx.isProceduralBlock = False
         ctx.isInitialBlock = False
         if len(self.body) == 0:
             ctx.Warning(f"Empty initial block", self.srcFrame)
