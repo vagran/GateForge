@@ -658,7 +658,7 @@ end
     def test_comb(self):
         w = wire(8, "w")
         with always_comb():
-            w //= 4
+            w <<= 4
         self.CheckResult("""
 always_comb begin
     w = 'h4;

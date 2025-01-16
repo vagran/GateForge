@@ -1581,12 +1581,14 @@ class AssignmentStatement(Statement):
         ctx = CompileCtx.Current()
         self.isProceduralBlock = ctx.isProceduralBlock
         self.isInitialBlock = ctx.isInitialBlock
+        self.isCombinationalBlock = ctx.proceduralBlock is not None and \
+            ctx.proceduralBlock.logicType == ProceduralBlock.LogicType.COMB
         lhs._Wire(True, frameDepth + 1)
         rhs._Wire(False, frameDepth + 1)
         lhs._Assign(None, frameDepth + 1)
 
         if self.isProceduralBlock:
-            if not self.isBlocking:
+            if not self.isBlocking and not self.isCombinationalBlock:
                 for e in self.lhs._GetLeafNodes():
                     if isinstance(e, Net) and not e.isReg:
                         raise ParseException(f"Procedural assignment to wire {e}")
@@ -1609,7 +1611,7 @@ class AssignmentStatement(Statement):
 
     def Render(self, ctx: RenderCtx):
         if self.isProceduralBlock:
-            op = "=" if self.isBlocking or self.isInitialBlock else "<="
+            op = "=" if self.isBlocking or self.isInitialBlock or self.isCombinationalBlock else "<="
             self.lhs.Render(ctx)
             ctx.Write(f" {op} ")
             self.rhs.Render(ctx)
