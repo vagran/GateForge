@@ -1,8 +1,8 @@
-from typing import List, Optional, Tuple, Type, cast
-from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConcatExpr, ConditionalExpr, Const, \
-    Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, Namespace, Net, \
-    NetProxy, ParseException, ProceduralBlock, Reg, SensitivityList, WhenStatement, Wire, \
-    RawExpression
+from typing import List, Optional, Sequence, Type, cast
+from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConcatExpr, ConditionalExpr, \
+    Const, Dimensions, Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, \
+    Namespace, Net, NetProxy, ParseException, ProceduralBlock, Reg, SensitivityList, \
+    WhenStatement, Wire, RawExpression
 
 
 def const(value: str | int | bool, size: Optional[int] = None) -> Const:
@@ -10,30 +10,33 @@ def const(value: str | int | bool, size: Optional[int] = None) -> Const:
 
 
 def _CreateNet(isReg: bool,
-               sizeOrName: int | List[int] | Tuple[int] | str | None,
-               name: Optional[str]) -> Reg | Wire:
-    size = 1
-    baseIndex = 0
-    if sizeOrName is not None:
-        if isinstance(sizeOrName, str):
-            if name is not None:
-                raise ParseException("Name specified twice")
-            name = sizeOrName
+               dimsOrName: str | int | Sequence[int] | None,
+               dims: Sequence[int | Sequence[int]]) -> Reg | Wire:
+    name: Optional[str] = None
+    _dims: Optional[List[int | Sequence[int]]] = None
+    if dimsOrName is not None:
+        if isinstance(dimsOrName, str):
+            name = dimsOrName
         else:
-            size, baseIndex = Net._ParseSize(sizeOrName)
-
+            _dims = [dimsOrName]
+        if len(dims) > 0:
+            if _dims is None:
+                _dims = list(dims)
+            else:
+                _dims.extend(dims)
     ctr: Type[Reg | Wire] = Reg if isReg else Wire
-    return ctr(size=size, baseIndex=baseIndex, isReg=isReg, name=name, frameDepth=2)
+    return ctr(dims=Dimensions.Parse(_dims, None) if _dims is not None else None,
+               isReg=isReg, name=name, frameDepth=2)
 
 
-def wire(sizeOrName: int | List[int] | Tuple[int] | str | None = None, /,
-         name: Optional[str] = None) -> Wire:
-    return cast(Wire, _CreateNet(False, sizeOrName, name))
+def wire(dimsOrName: str | int | Sequence[int] | None = None,
+         *dims: int | Sequence[int]) -> Wire:
+    return cast(Wire, _CreateNet(False, dimsOrName, dims))
 
 
-def reg(sizeOrName: int | List[int] | Tuple[int] | str | None = None, /,
-        name: Optional[str] = None) -> Reg:
-    return cast(Reg, _CreateNet(True, sizeOrName, name))
+def reg(dimsOrName: str | int | Sequence[int] | None = None,
+        *dims: int | Sequence[int]) -> Reg:
+    return cast(Reg, _CreateNet(True, dimsOrName, dims))
 
 
 def concat(*items: RawExpression) -> ConcatExpr:

@@ -1,9 +1,8 @@
-import collections
 from dataclasses import dataclass
 from enum import Enum, auto
 from io import TextIOBase
 import threading
-from typing import Any, Generic, Iterable, Iterator, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Generic, Iterable, Iterator, List, Optional, Sequence, Tuple, Type, TypeVar
 import traceback
 import re
 import math
@@ -422,8 +421,286 @@ class SyntaxNode:
         raise NotImplementedError()
 
 
+# Immutable net dimensions descriptor
+class Dimensions:
+    # Packed dimensions, left to right, each element is (baseIndex, size). Size may be negative to
+    # indicate little endianness.
+    packed: Optional[Tuple[Tuple[int, int],...]] = None
+    # Unpacked dimensions, left to right, each element is (baseIndex, size)
+    unpacked: Optional[Tuple[Tuple[int, int],...]] = None
+
+    # Size of bits vector (product of packed dimensions sizes)
+    vectorSize: int = 1
+
+
+    def __init__(self, packedDims: Optional[Tuple[Tuple[int, int],...]],
+                 unpackedDims: Optional[Tuple[Tuple[int, int],...]]):
+        if packedDims is not None:
+            Dimensions._ValidateDims(packedDims)
+            self.packed = packedDims
+            self.vectorSize = Dimensions._CalculateSize(packedDims)
+        if unpackedDims is not None:
+            Dimensions._ValidateDims(unpackedDims)
+            self.unpacked = unpackedDims
+
+    @property
+    def isArray(self) -> bool:
+        return self.unpacked is not None
+
+
+    @staticmethod
+    def Parse(packedDims: Optional[Sequence[int | Sequence[int]]],
+              unpackedDims: Optional[Sequence[int | Sequence[int]]]) -> "Dimensions":
+        return Dimensions(Dimensions._Parse(packedDims), Dimensions._Parse(unpackedDims))
+
+
+    @staticmethod
+    def ParseSlice(index: "int | bool | slice | Expression") -> "int | Tuple[int, int] | Expression":
+        """Parse slice argument.
+
+        :return: Either slicing expression or (baseIndex, size) tuple.
+        """
+        def CheckConst(index: Any) -> Optional[int]:
+            if isinstance(index, int):
+                return index
+            elif isinstance(index, bool):
+                return 1 if index else 0
+            elif isinstance(index, Const):
+                return index.value
+            return None
+
+        const = CheckConst(index)
+        if const is not None:
+            return const
+        elif isinstance(index, slice):
+            if index.step is not None:
+                raise ParseException(f"Slice cannot have step specified: {index}")
+            start = CheckConst(index.start)
+            if start is None:
+                raise ParseException(f"Slice MSB is not constant number: {index.start}")
+            stop = CheckConst(index.stop)
+            if stop is None:
+                raise ParseException(f"Slice LSB is not constant number: {index.stop}")
+            if start >= stop:
+                return (start, stop - start + 1)
+            else:
+                return (start, stop - start - 1)
+        elif isinstance(index, Expression):
+            return index
+        raise ParseException(f"Bad index type: {type(index).__name__}")
+
+
+    def Slice(self, index: "int | bool | slice | Expression") -> Optional["Dimensions"]:
+        """Perform slicing of the dimensioned expression. Validate if possible (if constant
+        expression supplied).
+        :return: Reduced dimensions.
+        """
+
+        slice = Dimensions.ParseSlice(index)
+        if isinstance(slice, tuple):
+            dim = self._GetOutermostDimension()
+            if slice[1] < 0 != dim[1] < 0:
+                raise ParseException(
+                    f"Slice endianness does not match array dimension endianness: {index}")
+            self._CheckIndex(slice[0])
+            if slice[1] < 0:
+                self._CheckIndex(slice[0] + slice[1] + 1)
+            else:
+                self._CheckIndex(slice[0] + slice[1] - 1)
+            # At least Verilator make slice of little-endian array be big-endian. So make same logic
+            # for now.
+            return self._Reduced((0, abs(slice[1])))
+        return self._Reduced()
+
+
+    def Array(self, dims: Tuple[Tuple[int, int],...]) -> "Dimensions":
+        """Add unpacked dimensions.
+        :param dims: Additional (rightmost) unpacked dimensions, left to right.
+        """
+        return Dimensions(self.packed, self.unpacked + dims if self.unpacked is not None else dims)
+
+
+    @staticmethod
+    def MakeArray(src: Optional["Dimensions"], dims: Sequence[int | Sequence[int]]) -> "Dimensions":
+        _dims = Dimensions._Parse(dims)
+        if _dims is None:
+            raise ParseException("Empty dimension is not allowed for array declaration")
+        if src is None:
+            return Dimensions(None, _dims)
+        return src.Array(_dims)
+
+
+    def RenderDeclaration(self, ctx: RenderCtx, name: str):
+        if self.packed is not None:
+            for dim in self.packed:
+                ctx.Write(self.StrDimension(dim))
+        ctx.Write(" ")
+        ctx.Write(name)
+        if self.unpacked is not None:
+            for dim in self.unpacked:
+                ctx.Write(self.StrDimension(dim))
+
+
+    def Match(self, other: "Dimensions", unpackedOnly: bool = False) -> bool:
+        """Match two dimensions. Unpacked part should match exactly. Packed vector size should be
+        equal.
+        """
+        if self.unpacked != other.unpacked:
+            return False
+        if unpackedOnly:
+            return True
+        return self.vectorSize == other.vectorSize
+
+
+    @staticmethod
+    def MatchAny(d1: Optional["Dimensions"], d2: Optional["Dimensions"],
+                 unpackedOnly: bool = False) -> bool:
+        if d1 is not None and d2 is not None:
+            return d1.Match(d2, unpackedOnly)
+        if d1 is not None and d1.isArray:
+            return False
+        if d2 is not None and d2.isArray:
+            return False
+        if unpackedOnly:
+            return True
+        if d1 is not None and d1.vectorSize != 1:
+            return False
+        if d2 is not None and d2.vectorSize != 1:
+            return False
+        return True
+
+
+    def __len__(self) -> int:
+        dim = self._GetOutermostDimension()
+        return abs(dim[1])
+
+
+    def Str(self, name: Optional[str] = None) -> str:
+        s = ""
+        if self.packed is not None:
+            for dim in self.packed:
+                s += f"[{abs(dim[1])}({Dimensions.StrDimension(dim)})]"
+        if len(s) > 0:
+            s += " "
+        s += "$" if name is None else name
+        if self.unpacked is not None:
+            for dim in self.unpacked:
+                s += f"[{abs(dim[1])}({Dimensions.StrDimension(dim)})]"
+        return s
+
+
+    def __str__(self) -> str:
+        return self.Str()
+
+
+    @staticmethod
+    def StrAny(dim: Optional["Dimensions"], name: Optional[str] = None) -> str:
+        if dim is None:
+            return ""
+        return dim.Str(name)
+
+
+    @staticmethod
+    def StrDimension(dim: Tuple[int, int]) -> str:
+        baseIndex, size = dim
+        if size > 0:
+            return f"[{baseIndex + size - 1}:{baseIndex}]"
+        return f"[{baseIndex + size + 1}:{baseIndex}]"
+
+
+    def _CheckIndex(self, index: int):
+        dim = self._GetOutermostDimension()
+        baseIndex, size = dim
+        if size > 0:
+            if index >= baseIndex and index < baseIndex + size:
+                return
+        else:
+            if index <= baseIndex and index > baseIndex + size:
+                return
+        raise ParseException(f"Index out of range: {index} of {Dimensions.StrDimension(dim)}")
+
+
+    def _Reduced(self, newDim: Optional[Tuple[int, int]] = None) -> Optional["Dimensions"]:
+        """
+        :param newDim: Replace the outermost dimension instead of stripping if specified.
+        :return: Object with one reduced dimension (the outermost).
+        """
+        if self.unpacked is not None:
+            if newDim is not None:
+                return Dimensions(self.packed, (newDim,) + self.unpacked[1:])
+            if len(self.unpacked) == 1:
+                return Dimensions(self.packed, None)
+            return Dimensions(self.packed, self.unpacked[1:])
+        assert self.packed is not None
+        if newDim is not None:
+            return Dimensions((newDim,) + self.packed[1:], None)
+        if len(self.packed) == 1:
+            return None
+        return Dimensions(self.packed[1:], None)
+
+
+    def _GetOutermostDimension(self) -> Tuple[int, int]:
+        if self.unpacked is not None:
+            return self.unpacked[0]
+        assert self.packed is not None
+        return self.packed[0]
+
+
+    @staticmethod
+    def _Parse(dims: Optional[Sequence[int | Sequence[int]] | int]) -> Optional[Tuple[Tuple[int, int],...]]:
+        if isinstance(dims, int):
+            if dims <= 0:
+                raise ParseException(f"Dimension size should be positive: {dims}")
+            return (((0, dims),))
+
+        if dims is None or len(dims) == 0:
+            return None
+        result: List[Tuple[int, int]] = []
+        for dim in dims:
+            if isinstance(dim, int):
+                if dim <= 0:
+                    raise ParseException(f"Dimension size should be positive: {dim}")
+                result.append((0, dim))
+                continue
+            if len(dim) != 2:
+                raise ParseException(f"Expected two elements in dimension item: {dim}")
+            leftIndex, rightIndex = dim
+            if not isinstance(leftIndex, int):
+                raise ParseException(f"Expected integer index: {leftIndex}")
+            if not isinstance(rightIndex, int):
+                raise ParseException(f"Expected integer index: {rightIndex}")
+            if leftIndex >= rightIndex:
+                result.append((rightIndex, leftIndex - rightIndex + 1))
+            else:
+                # Little-endian
+                result.append((rightIndex, leftIndex - rightIndex - 1))
+
+        return tuple(result)
+
+
+    @staticmethod
+    def _ValidateDims(dims: Tuple[Tuple[int, int],...]):
+        for dim in dims:
+            if len(dim) != 2:
+                raise ParseException("Expected two elements in dimension item")
+            _, size = dim
+            if size == 0:
+                raise ParseException("Array zero size")
+
+
+    @staticmethod
+    def _CalculateSize(dims: Tuple[Tuple[int, int],...]):
+        size = 1
+        for _, dSize in dims:
+            size *= abs(dSize)
+        return size
+
+
 class Expression(SyntaxNode):
-    size: Optional[int] = None
+    dims: Optional[Dimensions] = None
+    # Single-dimensional vector can be of unbound size, e.g. unbound size constant or its
+    # concatenation
+    isUnboundSize: bool = False
     isLhs: bool = False
     # Expression is wired when used in some statement. Unwired expressions are dangling and do not
     # affect the produced output, however, may be used, for example, to define external module ports.
@@ -433,28 +710,17 @@ class Expression(SyntaxNode):
     needParentheses: bool = False
 
 
-    def _CheckSlice(self, s: int | slice) -> Tuple[int, int]:
-        if isinstance(s, int):
-            if s < 0:
-                raise ParseException(f"Negative slice index: {s}")
-            return (s, 1)
-        elif isinstance(s, slice):
-            if s.step is not None:
-                raise ParseException("Slice cannot have step specified")
-            if not isinstance(s.start, int):
-                raise ParseException(f"Slice MSB is not int: {s.start}")
-            if not isinstance(s.stop, int):
-                raise ParseException(f"Slice LSB is not int: {s.start}")
-            if s.start < s.stop:
-                raise ParseException(f"Slice MSB should be not less than LSB, has {s.start} < {s.stop}")
-            return (s.stop, s.start - s.stop + 1)
-        else:
-            raise ParseException(f"Expected int or slice, has `{s}: {type(s).__name__}`")
+    @property
+    def vectorSize(self) -> int:
+        if self.dims is None:
+            return 1
+        return self.dims.vectorSize
 
 
-    def __getitem__(self, s) -> "SliceExpr":
-        index, size = self._CheckSlice(s)
-        return SliceExpr(self, index, size, 1)
+    def __getitem__(self, index: "int | bool | slice | Expression") -> "SliceExpr":
+        if self.dims is None:
+            raise ParseException(f"Attempting slice dimensionless expression: {self}")
+        return SliceExpr(self, index, 1)
 
 
     def __setitem__(self, idx, value):
@@ -496,7 +762,7 @@ class Expression(SyntaxNode):
         return True
 
 
-    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+    def _Assign(self, bitIndex: Optional[Tuple[int, ...]], frameDepth: int):
         """Called to mark assignment to the expression.
 
         :param bitIndex: Bit index which is driven. None if whole expression affected.
@@ -546,9 +812,16 @@ class Expression(SyntaxNode):
 
 
     def __len__(self) -> int:
-        if self.size is None:
-            return 0
-        return self.size
+        if self.dims is None:
+            return 1
+        return len(self.dims)
+
+
+    @property
+    def vector_size(self) -> int:
+        if self.dims is None:
+            return 1
+        return self.dims.vectorSize
 
 
     def __ilshift__(self, rhs: "RawExpression") -> "Expression":
@@ -699,7 +972,8 @@ RawExpression = Expression | int | bool
 
 
 class Const(Expression):
-    # Minimal number of bits required to present the value without trimming
+    dims: Dimensions
+    # Minimal number of bits required to represent the value without trimming
     valueSize: int
     # Constant value
     value: int
@@ -710,26 +984,30 @@ class Const(Expression):
     def __init__(self, value: str | int | bool, size: Optional[int] = None, *, frameDepth: int):
         super().__init__(frameDepth + 1)
 
+        self.valueSize = Const.GetMinValueBits(self.value)
+
         if isinstance(value, str):
             if size is not None:
                 raise ParseException("Size should not be specified for string value")
-            self.value, self.size = Const._ParseStringValue(value)
+            self.value, size = Const._ParseStringValue(value)
         elif isinstance(value, bool):
             self.value = 1 if value else 0
-            self.size = 1
+            size = 1
         else:
             self.value = value
-            self.size = size
+        if size is None:
+            size = self.valueSize
+            self.isUnboundSize = True
+        self.dims = Dimensions(((0, size),), None)
 
         if self.value < 0:
             raise ParseException("Negative values not allowed")
 
-        self.valueSize = Const.GetMinValueBits(self.value)
-
-        if self.size is not None and self.valueSize > self.size:
-            trimmed = self.value & ((1 << self.size) - 1)
+        if not self.isUnboundSize and self.valueSize > len(self.dims):
+            trimmed = self.value & ((1 << len(self.dims)) - 1)
             CompileCtx.Current().Warning(
-                f"Constant explicit size less than value required size: {self.size} < {self.valueSize}, "
+                f"Constant explicit size less than value required size: "
+                f"{len(self.dims)} < {self.valueSize}, "
                 f"value trimmed {self.value} => {trimmed}")
             self.value = trimmed
 
@@ -744,7 +1022,7 @@ class Const(Expression):
 
 
     def Render(self, ctx: RenderCtx):
-        ctx.Write(f"{'' if self.size is None else self.size}'h{self.value:x}")
+        ctx.Write(f"{'' if self.isUnboundSize else len(self.dims)}'h{self.value:x}")
 
 
     @staticmethod
@@ -802,31 +1080,107 @@ class Const(Expression):
         return value, size
 
 
+class AssignmentTracker:
+    """Radix trie with multi-dimensional index prefixes.
+    """
+
+    class Node:
+        prefix: Tuple[int, ...] = tuple()
+        children: List["AssignmentTracker.Node"]
+        value: Optional[traceback.FrameSummary] = None
+
+
+        def _Match(self, index: Tuple[int, ...]) -> Optional[Tuple[int, ...]]:
+            """Match the specified index to this node prefix.add()
+            :return: Tailing part of the index if matched, `None` if not matched.
+            """
+            if len(index) <= len(self.prefix):
+                if index != self.prefix[0:len(index)]:
+                    return None
+                return tuple()
+            if index[0:len(self.prefix)] != self.prefix:
+                return None
+            return index[len(self.prefix):]
+
+
+        def GetFirstValue(self):
+            if self.value is not None:
+                return self.value
+            return self.children[0].GetFirstValue()
+
+
+        def Get(self, index: Tuple[int, ...]) -> Optional[traceback.FrameSummary]:
+            if len(index) < 1:
+                raise Exception("Empty prefix")
+            if self.value is not None:
+                return self.value
+            for child in self.children:
+                newIndex = child._Match(index)
+                if newIndex is None:
+                    continue
+                if len(newIndex) == 0:
+                    return child.GetFirstValue()
+                return child.Get(newIndex)
+
+            return None
+
+
+        def Set(self, index: Tuple[int, ...], value: traceback.FrameSummary):
+            tail = self._Match(index)
+            if tail is None:
+                raise Exception("No prefix match")
+            splitPos = len(index) - len(tail)
+            if splitPos == len(self.prefix):
+                for child in self.children:
+                    if child._Match(tail) is not None:
+                        child.Set(tail, value)
+                        return
+                node = AssignmentTracker.Node()
+                node.prefix = tail
+                node.value = value
+                self.children.append(node)
+            else:
+                node = AssignmentTracker.Node()
+                node.prefix = self.prefix[splitPos:]
+                node.children = self.children
+                self.prefix = self.prefix[0:splitPos]
+                self.children = [node]
+
+
+    root: Node
+
+
+    def __init__(self):
+        self.root = AssignmentTracker.Node()
+        self.root.children = list()
+
+
+    def Get(self, index: Tuple[int, ...]) -> Optional[traceback.FrameSummary]:
+        return self.root.Get(index)
+
+
+    def Set(self, index: Tuple[int, ...], value: traceback.FrameSummary):
+        self.root.Set(index, value)
+
+
 class Net(Expression):
-    size: int
     isLhs = True
-    baseIndex: int = 0
     isReg: bool
     # Name specified when net is created
     initialName: Optional[str] = None
     # Actual name is resolved when wired
     name: str
     # Bits assignments map, for assignments in procedural blocks
-    procAssignments: List[Optional[traceback.FrameSummary]]
+    procAssignments: AssignmentTracker
     # For assignments outside of procedural blocks
-    nonProcAssignments: List[Optional[traceback.FrameSummary]]
+    nonProcAssignments: AssignmentTracker
 
 
-    def __init__(self, *, size: int, baseIndex: Optional[int], isReg: bool, name: Optional[str],
+    def __init__(self, *, dims: Optional[Dimensions], isReg: bool, name: Optional[str],
                  frameDepth: int):
         super().__init__(frameDepth + 1)
-        if size <= 0:
-            raise ParseException(f"Net size should be positive, have {size}")
-        self.size = size
-        if baseIndex is not None:
-            if baseIndex < 0:
-                raise ParseException(f"Net base index cannot be negative, have {baseIndex}")
-            self.baseIndex = baseIndex
+        if dims is not None:
+            self.dims = dims
         self.isReg = isReg
         self.strValue = f"{'Reg' if isReg else 'Wire'}"
 
@@ -835,16 +1189,8 @@ class Net(Expression):
             self.initialName = name
             self.strValue += f"(`{name}`)"
 
-        self.procAssignments = [None for i in range(size)]
-        self.nonProcAssignments = [None for i in range(size)]
-
-
-    def __getitem__(self, s):
-        # Need to adjust index according to baseIndex
-        index, size = self._CheckSlice(s)
-        if index < self.baseIndex:
-            raise ParseException(f"Index is less than LSB index: {index} < {self.baseIndex}")
-        return SliceExpr(self, index - self.baseIndex, size, 1)
+        self.procAssignments = AssignmentTracker()
+        self.nonProcAssignments = AssignmentTracker()
 
 
     @property
@@ -874,12 +1220,11 @@ class Net(Expression):
             if ctx.options.sourceMap and type(self) is not Port:
                 ctx.Write(f"// {self.sourceMapEntry}\n")
                 ctx.WriteIndent(self.indent)
-            s = "reg" if self.isReg else "wire"
-            assert self.size is not None
-            if self.baseIndex != 0 or self.size > 1:
-                s += f"[{self.baseIndex + self.size - 1}:{self.baseIndex}]"
-            s += f" {self.namespacePrefix}{name}"
-            ctx.Write(s)
+            ctx.Write("reg" if self.isReg else "wire")
+            if self.dims is not None:
+                self.dims.RenderDeclaration(ctx, f"{self.namespacePrefix}{name}")
+            else:
+                ctx.Write(f" {self.namespacePrefix}{name}")
         else:
             ctx.Write(self.namespacePrefix)
             ctx.Write(name)
@@ -896,14 +1241,14 @@ class Net(Expression):
         return True
 
 
-    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+    def _Assign(self, bitIndex: Optional[Tuple[int,...]], frameDepth: int):
         ctx = CompileCtx.Current()
 
-        def _AssignBit(bitIndex: int, frame: traceback.FrameSummary):
+        def _AssignBit(bitIndex: Tuple[int,...], frame: traceback.FrameSummary):
             # We cannot properly check for conflict in procedural assignments without analyzing
             # whole the flow. So just check for conflict with non-procedural continuous assignment.
-            prevProcFrame = self.nonProcAssignments[bitIndex]
-            prevNonProcFrame = self.nonProcAssignments[bitIndex]
+            prevProcFrame = self.procAssignments.Get(bitIndex)
+            prevNonProcFrame = self.nonProcAssignments.Get(bitIndex)
             if prevNonProcFrame is not None:
                 prevFrame = prevNonProcFrame
             elif not ctx.isProceduralBlock and prevProcFrame is not None:
@@ -915,16 +1260,37 @@ class Net(Expression):
                     f"Net re-assignment, `{self}[{bitIndex}]` was previously assigned at " +
                     SyntaxNode.GetFullLocation(prevFrame))
             if ctx.isProceduralBlock:
-                self.procAssignments[bitIndex] = frame
+                self.procAssignments.Set(bitIndex, frame)
             else:
-                self.nonProcAssignments[bitIndex] = frame
+                self.nonProcAssignments.Set(bitIndex, frame)
 
         frame = self.GetFrame(frameDepth + 1)
         if bitIndex is None:
-            for i in range(self.size):
-                _AssignBit(i, frame)
+            prevFrame = self.nonProcAssignments.root.GetFirstValue()
+            if prevFrame is None and not ctx.isProceduralBlock:
+                prevFrame = self.procAssignments.root.GetFirstValue()
+            if prevFrame is not None:
+                raise ParseException(
+                    f"Net re-assignment, `{self}` was previously assigned at " +
+                    SyntaxNode.GetFullLocation(prevFrame))
         else:
             _AssignBit(bitIndex, frame)
+
+
+    @property
+    def array(self, *dims: int | Sequence[int]) -> "Net":
+        cls: Type[Reg | Wire]
+        if isinstance(self, Reg):
+            cls = Reg
+        elif isinstance(self, Wire):
+            cls = Wire
+        else:
+            raise ParseException("Can be called only for Reg or Wire instance")
+        if self.isWired:
+            raise ParseException(
+                f"Cannot declare array on wired expression, wired at {SyntaxNode.GetFullLocation(self.wiringFrame)}")
+        return cls(dims=Dimensions.MakeArray(self.dims, dims),
+                   isReg=self.isReg, name=self.initialName, frameDepth=1)
 
 
     @property
@@ -947,23 +1313,6 @@ class Net(Expression):
         return EdgeTrigger(self, False, 1)
 
 
-    @staticmethod
-    def _ParseSize(sizeSpec: int | List[int] | Tuple[int] | None) -> Tuple[int, int]:
-        size = 1
-        baseIndex = 0
-        if sizeSpec is not None:
-            if isinstance(sizeSpec, int):
-                size = sizeSpec
-            else:
-                if not isinstance(sizeSpec, collections.abc.Sequence):
-                    raise ParseException("Sequence expected for net indices range")
-                idxHigh, baseIndex = sizeSpec # type: ignore
-                if idxHigh < baseIndex:
-                    raise ParseException(f"Bad net indices range, {idxHigh} < {baseIndex}")
-                size = idxHigh - baseIndex + 1
-        return size, baseIndex
-
-
 class Wire(Net):
     isReg = False
 
@@ -981,7 +1330,7 @@ class NetProxy(Net):
         if not isinstance(src, Net):
             raise ParseException(f"Net type expected, has `{type(src).__name__}`")
         self.isOutput = isOutput
-        super().__init__(size=src.size, baseIndex=src.baseIndex, isReg=src.isReg,
+        super().__init__(dims=src.dims, isReg=src.isReg,
                          name=src.initialName, frameDepth=frameDepth + 1)
         self.src = src
         self.isLhs = isOutput
@@ -1042,23 +1391,21 @@ class NetProxy(Net):
 
 
 NetMarkerArgType = Type[Wire] | Type[Reg] | Tuple[Type[Wire] | Type[Reg],
-                    int | List[int] | Tuple[int]]
+                   int | Sequence[int]]
 
 
 class NetMarkerType:
     netType: Type[Wire] | Type[Reg]
     isOutput: bool
-    size: int = 1
-    baseIndex: int = 0
-    sizeSpecified = False
+    dims: Optional[Dimensions] = None
+
 
     def __init__(self, netType: NetMarkerArgType, isOutput: bool):
         if netType is Wire or netType is Reg:
             self.netType = netType # type: ignore
         else:
             self.netType = netType[0] # type: ignore
-            self.size, self.baseIndex = Net._ParseSize(netType[1]) # type: ignore
-            self.sizeSpecified = True
+            self.dims = Dimensions.Parse(netType[1], None) # type: ignore
 
         self.isOutput = isOutput
 
@@ -1110,16 +1457,14 @@ class Port(Net):
         if not isinstance(src, NetProxy):
             raise ParseException(f"NetProxy type expected, has `{type(src).__name__}`")
         if isinstance(src.src, Port):
-            raise ParseException(f"Cannot take port from port: {src.src}")
-        if src.size is None:
-            raise ParseException("Port cannot be created from unsized net")
+            raise ParseException(f"Cannot create port from port: {src.src}")
         if src.initialName is None:
             raise ParseException("Port cannot be created from unnamed net")
         if src.src.isWired:
             raise ParseException("Port cannot be created from wired net, wired at " +
                                  SyntaxNode.GetFullLocation(src.src.wiringFrame))
-        super().__init__(size=src.size, baseIndex=src.baseIndex, isReg=src.isReg,
-                         name=src.initialName, frameDepth=frameDepth + 1)
+        super().__init__(dims=src.dims, isReg=src.isReg, name=src.initialName,
+                         frameDepth=frameDepth + 1)
         self.src = src
         self.isLhs = src.isOutput
         self.isOutput = src.isOutput
@@ -1184,6 +1529,7 @@ class ConcatExpr(Expression):
                 yield Expression._FromRaw(e, frameDepth + 1)
 
 
+    #XXX
     def _CalculateSize(self):
         size = 0
         valueSize = 0
@@ -1220,21 +1566,6 @@ class ConcatExpr(Expression):
         yield from self.args
 
 
-    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
-        if bitIndex is None:
-            for arg in self.args:
-                arg._Assign(None, frameDepth + 1)
-        else:
-            index = 0
-            for arg in reversed(self.args):
-                if arg.size is None or bitIndex < index + arg.size:
-                    assert bitIndex >= index
-                    arg._Assign(bitIndex - index, frameDepth + 1)
-                    return
-                index += arg.size
-            raise Exception(f"Assignment index out of range: {bitIndex}")
-
-
     def Render(self, ctx: RenderCtx):
         ctx.Write("{")
         isFirst = True
@@ -1248,20 +1579,19 @@ class ConcatExpr(Expression):
 
 
 class SliceExpr(Expression):
-    size: int
     arg: Expression
     # Index is always zero-based, nets' base index is applied before if needed.
-    index: int
+    index: int | Tuple[int, int] | "Expression"
 
 
-    def __init__(self, arg: Expression, index: int, size: int, frameDepth: int):
+    def __init__(self, arg: Expression, index: "int | bool | slice | Expression", frameDepth: int):
         super().__init__(frameDepth + 1)
         self.arg = Expression._CheckType(arg)
+        if self.arg.dims is None:
+            raise Exception("Cannot slice dimensionless expression")
+        self.index = Dimensions.ParseSlice(index)
+        self.dims = self.arg.dims.Slice(index)
         self.isLhs = self.arg.isLhs
-        if self.arg.size is not None:
-            self._CheckRange(index, size, self.arg.size)
-        self.size = size
-        self.index = index
 
 
     def _CheckRange(self, index: int, size: int, srcSize: int):
@@ -1282,7 +1612,8 @@ class SliceExpr(Expression):
         yield self.arg
 
 
-    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+    def _Assign(self, bitIndex: Optional[Tuple[int,...]], frameDepth: int):
+        #XXX
         if bitIndex is None:
             for i in range(self.index, self.index + self.size):
                 self.arg._Assign(i, frameDepth + 1)
@@ -1291,17 +1622,15 @@ class SliceExpr(Expression):
 
 
     def Render(self, ctx: RenderCtx):
-        index = self.index
-        assert self.size is not None
-        size = self.size
-        if isinstance(self.arg, Net):
-            index += self.arg.baseIndex
-        if size == 1:
-            s = str(index)
-        else:
-            s = f"{index + size - 1}:{index}"
         self.arg.RenderNested(ctx)
-        ctx.Write(f"[{s}]")
+        ctx.Write("[")
+        if isinstance(self.index, int):
+            ctx.Write(str(self.index))
+        elif isinstance(self.index, tuple):
+            ctx.Write(Dimensions.StrDimension(self.index))
+        else:
+            self.index.Render(ctx)
+        ctx.Write("]")
 
 
 class ArithmeticExpr(Expression):
@@ -1388,18 +1717,10 @@ class ComparisonExpr(Expression):
         if not super()._Wire(isLhs, frameDepth + 1):
             return False
 
-        lhsSize = self.lhs.size
-        if lhsSize is None and hasattr(self.lhs, "valueSize"):
-            lhsSize = self.lhs.valueSize
-
-        rhsSize = self.rhs.size
-        if rhsSize is None and hasattr(self.rhs, "valueSize"):
-            rhsSize = self.rhs.valueSize
-
-        if lhsSize is not None and rhsSize is not None and lhsSize != rhsSize:
+        if not Dimensions.MatchAny(self.lhs.dims, self.rhs.dims):
             CompileCtx.Current().Warning(
                 "Comparing operands of different size: "
-                f"{lhsSize}'{self.lhs} <=> {rhsSize}'{self.rhs}")
+                f"{Dimensions.StrAny(self.lhs.dims, str(self.lhs))} <=> {Dimensions.StrAny(self.rhs.dims, str(self.rhs))}")
 
         return True
 
@@ -1425,7 +1746,7 @@ class UnaryOperator(Expression):
         self.strValue = f"Unary({op})"
         self.op = op
         self.arg = Expression._FromRaw(arg, frameDepth + 1)
-        self.size = self.arg.size
+        self.dims = self.arg.dims
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
@@ -1443,8 +1764,10 @@ class ReductionOperator(UnaryOperator):
             raise ParseException("Reduction operator applied on another reduction, probably a bug")
         super().__init__(op, arg, frameDepth + 1)
         self.strValue = f"Reduce({op})"
-        self.size = 1
-        if self.arg.size == 1:
+        if self.arg.dims is not None and self.arg.dims.isArray:
+            raise ParseException("Reduction operator cannot be applied to unpacked array")
+        self.dims = Dimensions(((0, 1),), None)
+        if self.arg.dims is not None and self.arg.dims.vectorSize == 1:
             CompileCtx.Current().Warning(f"Reduction operator applied to 1 bit argument {arg}",
                                          self.srcFrame)
 
@@ -1458,9 +1781,12 @@ class ReplicationOperator(Expression):
         self.strValue = f"Replicate({count})"
         self.arg = Expression._CheckType(arg)
         self.count = count
-        if self.arg.size is None:
+        if self.arg.dims is not None and self.arg.dims.isArray:
+            raise ParseException("Replication operator cannot be applied to unpacked array")
+        if self.arg.isUnboundSize:
             raise ParseException(f"Replication operand should have size bound: {arg}")
-        self.size = self.arg.size * count
+        size = self.dims.vectorSize if self.dims is not None else 1
+        self.dims = Dimensions(((0, size * count),), None)
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
@@ -1488,8 +1814,13 @@ class ConditionalExpr(Expression):
         self.condition = Expression._CheckType(condition)
         self.ifCase = Expression._FromRaw(ifCase, frameDepth + 1)
         self.elseCase = Expression._FromRaw(elseCase, frameDepth + 1)
-        if self.ifCase.size is not None and self.elseCase.size is not None:
-            self.size = self.ifCase.size if self.ifCase.size >= self.elseCase.size else self.elseCase.size
+        if not Dimensions.MatchAny(self.ifCase.dims, self.elseCase.dims, True):
+            raise ParseException(
+                "Arrays of different shape in conditional expression: "
+                f"{Dimensions.StrAny(self.ifCase.dims)} <=> {Dimensions.StrAny(self.elseCase.dims)}")
+        #XXX
+        # if self.ifCase.size is not None and self.elseCase.size is not None:
+        #     self.size = self.ifCase.size if self.ifCase.size >= self.elseCase.size else self.elseCase.size
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
@@ -1585,7 +1916,8 @@ class AssignmentStatement(Statement):
             ctx.proceduralBlock.logicType == ProceduralBlock.LogicType.COMB
         lhs._Wire(True, frameDepth + 1)
         rhs._Wire(False, frameDepth + 1)
-        lhs._Assign(None, frameDepth + 1)
+        #XXX
+        # lhs._Assign(None, frameDepth + 1)
 
         if self.isProceduralBlock:
             if not self.isBlocking and not self.isCombinationalBlock:
@@ -1597,16 +1929,17 @@ class AssignmentStatement(Statement):
                 if isinstance(e, Net) and e.isReg:
                     ctx.Warning(f"Continuous assignment to register {e}", self.srcFrame)
 
-        assert lhs.size is not None
-        if rhs.size is not None:
-            if rhs.size > lhs.size:
-                raise ParseException(f"Assignment size exceeded: {lhs.size} bits <<= {rhs.size} bits")
-            elif rhs.size < lhs.size:
-                ctx.Warning(f"Assignment of insufficient size: {lhs.size} bits <<= {rhs.size} bits",
-                            self.srcFrame)
-        if hasattr(rhs, "valueSize"):
-            if rhs.valueSize > lhs.size:
-                raise ParseException(f"Constant minimal size exceeds assignment target size: {lhs.size} bits <<= {rhs.valueSize} bits")
+        assert not lhs.isUnboundSize
+        if not Dimensions.MatchAny(self.lhs.dims, self.rhs.dims, True):
+            raise ParseException(
+                "Arrays of different shape in assignment statement: "
+                f"{Dimensions.StrAny(self.lhs.dims)} <= {Dimensions.StrAny(self.rhs.dims)}")
+
+        if rhs.vectorSize > lhs.vectorSize:
+            raise ParseException(f"Assignment size exceeded: {lhs.vectorSize} bits <<= {rhs.vectorSize} bits")
+        elif rhs.vectorSize < lhs.vectorSize:
+            ctx.Warning(f"Assignment of insufficient size: {lhs.vectorSize} bits <<= {rhs.vectorSize} bits",
+                        self.srcFrame)
 
 
     def Render(self, ctx: RenderCtx):
