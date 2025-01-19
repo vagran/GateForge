@@ -68,7 +68,6 @@ class Const(TestBase):
         self.CheckExpr(const(-1, 2), "-2'h1")
 
 
-@unittest.skip("XXX")
 class Net(TestBase):
 
     def test_basic(self):
@@ -80,24 +79,29 @@ class Net(TestBase):
         self.CheckExpr(w, "wire w")
         self.CheckExpr(r, "reg r")
 
-        self.CheckExpr(wire(2, "w"), "wire[1:0] w")
+        self.CheckExpr(wire("w", 2), "wire[1:0] w")
 
-        self.CheckExpr(wire([3, 1], "w"), "wire[3:1] w")
-        self.CheckExpr(reg((5, 0), "w"), "reg[5:0] w")
-        self.CheckExpr(reg((1, 1), "w"), "reg[1:1] w")
+        self.CheckExpr(wire("w", [3, 1]), "wire[3:1] w")
+        self.CheckExpr(reg("w", (5, 0)), "reg[5:0] w")
+        self.CheckExpr(reg("w", (1, 1)), "reg[1:1] w")
+
+        self.CheckExpr(wire("w", 2, 3), "wire[1:0][2:0] w")
+        self.CheckExpr(wire("w", 2, (8, 6)), "wire[1:0][8:6] w")
+        self.CheckExpr(wire("w", [3, 1], (8, 6)), "wire[3:1][8:6] w")
+        self.CheckExpr(wire("w", [1, 3], (8, 6)), "wire[1:3][8:6] w")
+        self.CheckExpr(wire("w", [1, 3], (8, 6)).array(4), "wire[1:3][8:6] w[3:0]")
+        self.CheckExpr(wire("w", [1, 3], (8, 6)).array(4, 6), "wire[1:3][8:6] w[3:0][5:0]")
+        self.CheckExpr(wire("w", [1, 3], (8, 6)).array((3, 1), [7, 3]), "wire[1:3][8:6] w[3:1][7:3]")
+        self.CheckExpr(wire("w", [1, 3], (8, 6)).array(5, [3, 7]), "wire[1:3][8:6] w[4:0][3:7]")
 
         with namespace("TestNs"):
-            w = wire([3, 1], "w")
+            w = wire("w", [3, 1])
         self.CheckExpr(w, "wire[3:1] TestNs_w")
 
         with namespace("TestNs"):
-            w = wire([3, 1], "w").input
+            w = wire("w", [3, 1]).input
         self.CheckExpr(w, "wire[3:1] TestNs_w")
 
-        with self.assertRaises(ParseException):
-            reg((1,2))
-        with self.assertRaises(ParseException):
-            reg(0)
         with self.assertRaises(ParseException):
             reg(-1)
 

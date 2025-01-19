@@ -449,8 +449,8 @@ class Dimensions:
 
 
     @staticmethod
-    def Parse(packedDims: Optional[Sequence[int | Sequence[int]]],
-              unpackedDims: Optional[Sequence[int | Sequence[int]]]) -> "Dimensions":
+    def Parse(packedDims: Optional[Sequence[int | Sequence[int] | int]],
+              unpackedDims: Optional[Sequence[int | Sequence[int]] | int]) -> "Dimensions":
         return Dimensions(Dimensions._Parse(packedDims), Dimensions._Parse(unpackedDims))
 
 
@@ -521,7 +521,7 @@ class Dimensions:
 
 
     @staticmethod
-    def MakeArray(src: Optional["Dimensions"], dims: Sequence[int | Sequence[int]]) -> "Dimensions":
+    def MakeArray(src: Optional["Dimensions"], dims: Sequence[int | Sequence[int]] | int) -> "Dimensions":
         _dims = Dimensions._Parse(dims)
         if _dims is None:
             raise ParseException("Empty dimension is not allowed for array declaration")
@@ -1275,7 +1275,6 @@ class Net(Expression):
             _AssignBit(bitIndex, frame)
 
 
-    @property
     def array(self, *dims: int | Sequence[int]) -> "Net":
         cls: Type[Reg | Wire]
         if isinstance(self, Reg):
