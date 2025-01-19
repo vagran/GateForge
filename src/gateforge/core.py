@@ -475,16 +475,16 @@ class Dimensions:
         elif isinstance(index, slice):
             if index.step is not None:
                 raise ParseException(f"Slice cannot have step specified: {index}")
-            start = CheckConst(index.start)
-            if start is None:
+            msb = CheckConst(index.start)
+            if msb is None:
                 raise ParseException(f"Slice MSB is not constant number: {index.start}")
-            stop = CheckConst(index.stop)
-            if stop is None:
+            lsb = CheckConst(index.stop)
+            if lsb is None:
                 raise ParseException(f"Slice LSB is not constant number: {index.stop}")
-            if start >= stop:
-                return (start, stop - start + 1)
+            if msb >= lsb:
+                return (lsb, msb - lsb + 1)
             else:
-                return (start, stop - start - 1)
+                return (lsb, msb - lsb - 1)
         elif isinstance(index, Expression):
             return index
         raise ParseException(f"Bad index type: {type(index).__name__}")
@@ -497,9 +497,10 @@ class Dimensions:
         """
 
         slice = Dimensions.ParseSlice(index)
+
         if isinstance(slice, tuple):
             dim = self._GetOutermostDimension()
-            if slice[1] < 0 != dim[1] < 0:
+            if (slice[1] < 0) != (dim[1] < 0):
                 raise ParseException(
                     f"Slice endianness does not match array dimension endianness: {index}")
             self._CheckIndex(slice[0])
@@ -510,6 +511,10 @@ class Dimensions:
             # At least Verilator make slice of little-endian array be big-endian. So make same logic
             # for now.
             return self._Reduced((0, abs(slice[1])))
+
+        if isinstance(slice, int):
+            self._CheckIndex(slice)
+
         return self._Reduced()
 
 
@@ -601,11 +606,15 @@ class Dimensions:
 
 
     @staticmethod
-    def StrDimension(dim: Tuple[int, int]) -> str:
+    def StrDimension(dim: Tuple[int, int], brackets: bool = True) -> str:
         baseIndex, size = dim
         if size > 0:
-            return f"[{baseIndex + size - 1}:{baseIndex}]"
-        return f"[{baseIndex + size + 1}:{baseIndex}]"
+            if brackets:
+                return f"[{baseIndex + size - 1}:{baseIndex}]"
+            return f"{baseIndex + size - 1}:{baseIndex}"
+        if brackets:
+            return f"[{baseIndex + size + 1}:{baseIndex}]"
+        return f"{baseIndex + size + 1}:{baseIndex}"
 
 
     def _CheckIndex(self, index: int):
@@ -1011,7 +1020,14 @@ class Const(Expression):
 
     def __getitem__(self, s):
         # Slicing is optimized to produce constant
-        index, size = self._CheckSlice(s)
+        slice = Dimensions.ParseSlice(s)
+        if isinstance(slice, Expression):
+            return SliceExpr(self, s, 1)
+        if isinstance(slice, int):
+            index = slice
+            size = 1
+        else:
+            index, size = slice
         mask = (1 << size) - 1
         return Const((self.value >> index) & mask, size, frameDepth=1)
 
@@ -1591,20 +1607,6 @@ class SliceExpr(Expression):
         self.isLhs = self.arg.isLhs
 
 
-    def _CheckRange(self, index: int, size: int, srcSize: int):
-        if index + size > srcSize:
-            raise ParseException(
-                "Slice exceeds source expression size: "
-                f"[{index + size - 1}:{index}] out of {srcSize} bits source {self.arg}")
-
-
-    def __getitem__(self, s):
-        # Slicing is optimized to use inner slice source directly
-        index, size = self._CheckSlice(s)
-        self._CheckRange(index, size, self.size)
-        return SliceExpr(self.arg, self.index + index, size, 1)
-
-
     def _GetChildren(self) -> Iterator["Expression"]:
         yield self.arg
 
@@ -1624,7 +1626,7 @@ class SliceExpr(Expression):
         if isinstance(self.index, int):
             ctx.Write(str(self.index))
         elif isinstance(self.index, tuple):
-            ctx.Write(Dimensions.StrDimension(self.index))
+            ctx.Write(Dimensions.StrDimension(self.index, False))
         else:
             self.index.Render(ctx)
         ctx.Write("]")

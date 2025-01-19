@@ -115,30 +115,58 @@ class Net(TestBase):
             reg("reg")
 
 
-@unittest.skip("XXX")
 class Slice(TestBase):
 
     def test_basic(self):
-        self.CheckExpr(wire(8, "w")[0], "w[0]")
-        self.CheckExpr(wire(8, "w")[3], "w[3]")
-        self.CheckExpr(wire(8, "w").input[3], "w[3]")
-        self.CheckExpr(wire(8, "w").output[3], "w[3]")
-        self.CheckExpr(wire(8, "w")[5:2], "w[5:2]")
-        self.CheckExpr(wire((15, 8), "w")[8], "w[8]")
-        self.CheckExpr(wire((15, 8), "w")[15:8], "w[15:8]")
+        self.CheckExpr(wire("w", 8)[0], "w[0]")
+        self.CheckExpr(wire("w", 8)[3], "w[3]")
+        self.CheckExpr(wire("w", 8).input[3], "w[3]")
+        self.CheckExpr(wire("w", 8).output[3], "w[3]")
+        self.CheckExpr(wire("w", 8)[5:2], "w[5:2]")
+        self.CheckExpr(wire("w", (15, 8))[8], "w[8]")
+        self.CheckExpr(wire("w", (15, 8))[15:8], "w[15:8]")
 
-        # Slice of slice optimization
-        self.CheckExpr(wire((15, 8), "w")[11:8][2:1], "w[10:9]")
-        self.CheckExpr(wire((15, 8), "w")[11:8][2:1][1], "w[10]")
+        # Slice of slice optimization (removed for now)
+        # self.CheckExpr(wire("w", (15, 8))[11:8][2:1], "w[10:9]")
+        # self.CheckExpr(wire("w", (15, 8))[11:8][2:1][1], "w[10]")
+        self.CheckExpr(wire("w", (15, 8))[11:8][2:1], "w[11:8][2:1]")
+        self.CheckExpr(wire("w", (15, 8))[11:8][2:1][1], "w[11:8][2:1][1]")
 
         # Slice of constant optimization
         self.CheckExpr(const(0xde)[7:4], "4'hd")
         self.CheckExpr(const(0xde)[7:4][0], "1'h1")
         self.CheckExpr(const(0xde)[15:8], "8'h0")
 
-        # off-by-one both endianness
-        #XXX reverse endianness in slice
-        #XXX vector_size
+        # Reverse endianness in slice
+        with self.assertRaises(ParseException):
+            wire((15, 8))[10:12]
+        with self.assertRaises(ParseException):
+            wire((8, 15))[12:10]
+        self.CheckExpr(wire("w", (8, 15))[10:12], "w[10:12]")
+
+        # Off-by-one both endianness
+        self.CheckExpr(wire("w", (8, 15))[8], "w[8]")
+        self.CheckExpr(wire("w", (8, 15))[15], "w[15]")
+        with self.assertRaises(ParseException):
+            wire((8, 15))[16]
+        with self.assertRaises(ParseException):
+            wire((8, 15))[7]
+
+        self.CheckExpr(wire("w", (15, 8))[8], "w[8]")
+        self.CheckExpr(wire("w", (15, 8))[15], "w[15]")
+        with self.assertRaises(ParseException):
+            wire((15, 8))[16]
+        with self.assertRaises(ParseException):
+            wire((15, 8))[7]
+
+        self.CheckExpr(wire("w", (15, 8))[wire("w2")], "w[w2]")
+
+        self.assertEqual(1, wire().vector_size)
+        self.assertEqual(5, wire(5).vector_size)
+        self.assertEqual(8, wire((11, 4)).vector_size)
+        self.assertEqual(32, wire((11, 4), 4).vector_size)
+        self.assertEqual(48, wire((11, 4), (15, 10)).vector_size)
+        self.assertEqual(48, wire((11, 4), (15, 10)).array(4).vector_size)
 
         with self.assertRaises(ParseException):
             wire((15, 8))[0]
@@ -152,6 +180,8 @@ class Slice(TestBase):
             wire((15, 8))[10:8:1]
         with self.assertRaises(ParseException):
             wire((15, 8))["aaa"]
+        with self.assertRaises(ParseException):
+            wire()[0]
 
 
 @unittest.skip("XXX")
