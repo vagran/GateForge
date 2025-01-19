@@ -978,13 +978,11 @@ class Const(Expression):
     # Constant value
     value: int
 
-    _valuePat = re.compile(r"(?:(\d+)?'([bdoh]))?([\da-f_]+)", re.RegexFlag.IGNORECASE)
+    _valuePat = re.compile(r"(?:(-)?(\d+)?'([bdoh]))?([\da-f_]+)", re.RegexFlag.IGNORECASE)
 
 
     def __init__(self, value: str | int | bool, size: Optional[int] = None, *, frameDepth: int):
         super().__init__(frameDepth + 1)
-
-        self.valueSize = Const.GetMinValueBits(self.value)
 
         if isinstance(value, str):
             if size is not None:
@@ -995,21 +993,18 @@ class Const(Expression):
             size = 1
         else:
             self.value = value
+
+        self.valueSize = Const.GetMinValueBits(self.value)
+
         if size is None:
             size = self.valueSize
             self.isUnboundSize = True
         self.dims = Dimensions(((0, size),), None)
 
-        if self.value < 0:
-            raise ParseException("Negative values not allowed")
-
         if not self.isUnboundSize and self.valueSize > len(self.dims):
-            trimmed = self.value & ((1 << len(self.dims)) - 1)
-            CompileCtx.Current().Warning(
+            raise ParseException(
                 f"Constant explicit size less than value required size: "
-                f"{len(self.dims)} < {self.valueSize}, "
-                f"value trimmed {self.value} => {trimmed}")
-            self.value = trimmed
+                f"{len(self.dims)} < {self.valueSize}")
 
         self.strValue = f"Const({self.value})"
 
@@ -1022,7 +1017,7 @@ class Const(Expression):
 
 
     def Render(self, ctx: RenderCtx):
-        ctx.Write(f"{'' if self.isUnboundSize else len(self.dims)}'h{self.value:x}")
+        ctx.Write(f"{'-' if self.value < 0 else ''}{'' if self.isUnboundSize else len(self.dims)}'h{abs(self.value):x}")
 
 
     @staticmethod
@@ -1050,17 +1045,17 @@ class Const(Expression):
 
         size = None
 
-        if groups[0] is not None:
+        if groups[1] is not None:
             try:
-                size = int(groups[0])
+                size = int(groups[1])
             except:
-                raise ParseException(f"Bad size value in constant: `{groups[0]}")
+                raise ParseException(f"Bad size value in constant: `{groups[1]}")
             if size <= 0:
                 raise ParseException(f"Bad size value in constant: `{size}`")
 
         base = 10
-        if groups[1] is not None:
-            b = groups[1].lower()
+        if groups[2] is not None:
+            b = groups[2].lower()
             if b == "b":
                 base = 2
             elif b == "o":
@@ -1073,9 +1068,12 @@ class Const(Expression):
                 raise Exception("Unhandled base char")
 
         try:
-            value = int(groups[2], base)
+            value = int(groups[3], base)
         except:
-            raise ParseException(f"Unable to parse value `{groups[2]}` with base {base}")
+            raise ParseException(f"Unable to parse value `{groups[3]}` with base {base}")
+
+        if groups[0] is not None:
+            value = -value
 
         return value, size
 

@@ -28,7 +28,6 @@ class TestBase(unittest.TestCase):
         self.assertEqual(len(self.compileCtx.GetWarnings()), expectedWarnings)
 
 
-@unittest.skip("XXX")
 class Const(TestBase):
 
     def test_basic(self):
@@ -36,8 +35,8 @@ class Const(TestBase):
         self.CheckExpr(const(2), "'h2")
         self.CheckExpr(const(2, 3), "3'h2")
 
-        with self.assertRaises(ParseException):
-            const(-2)
+        self.CheckExpr(const(-2), "-'h2")
+        self.CheckExpr(const(-2, 3), "-3'h2")
 
         self.assertEqual(const(2).srcFrame.name, "test_basic")
 
@@ -48,14 +47,25 @@ class Const(TestBase):
         self.CheckExpr(const("'d16"), "'h10")
         self.CheckExpr(const(False), "1'h0")
         self.CheckExpr(const(True), "1'h1")
+        self.CheckExpr(const("-'h20"), "-'h20")
+        self.CheckExpr(const("-7'h20"), "-7'h20")
 
         self.CheckExpr(const("5'd16"), "5'h10")
 
         with self.assertRaises(ParseException):
             const("5'b12")
 
-        # Size trimming, warning expected
-        self.CheckExpr(const("5'hffff"), "5'h1f", 1)
+        # Insufficient size
+        with self.assertRaises(ParseException):
+            const("5'hffff")
+
+        with self.assertRaises(ParseException):
+            const(-1, 1)
+
+        with self.assertRaises(ParseException):
+            const("-1'h1")
+
+        self.CheckExpr(const(-1, 2), "-2'h1")
 
 
 @unittest.skip("XXX")
