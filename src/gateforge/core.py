@@ -450,6 +450,13 @@ class Dimensions:
         return self.unpacked is not None
 
 
+    @property
+    def baseIndex(self) -> int:
+        """Outermost dimension base index.
+        """
+        return self._GetOutermostDimension()[0]
+
+
     @staticmethod
     def Parse(packedDims: Optional[Sequence[int | Sequence[int] | int]],
               unpackedDims: Optional[Sequence[int | Sequence[int]] | int]) -> "Dimensions":
@@ -780,6 +787,13 @@ class Expression(SyntaxNode):
         if self.dims is None:
             return 1
         return self.dims.vectorSize
+
+
+    @property
+    def baseIndex(self) -> int:
+        if self.dims is None:
+            return 0
+        return self.dims.baseIndex
 
 
     @property
@@ -1473,7 +1487,7 @@ class NetMarkerType:
             self.netType = netType # type: ignore
         else:
             self.netType = netType[0] # type: ignore
-            self.dims = Dimensions.Parse(netType[1], None) # type: ignore
+            self.dims = Dimensions.Parse((netType[1],), None) # type: ignore
 
         self.isOutput = isOutput
 

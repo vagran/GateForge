@@ -1,7 +1,8 @@
 import inspect
 from typing import Generic, Type, TypeVar
 
-from gateforge.core import Net, Port, RawExpression, NetMarkerType, NetProxy, ParseException, Reg
+from gateforge.core import Dimensions, Net, Port, RawExpression, NetMarkerType, NetProxy, \
+    ParseException, Reg
 
 TBus = TypeVar("TBus", bound="Bus")
 TInterface = TypeVar("TInterface", bound="Interface")
@@ -90,7 +91,7 @@ class Bus(Generic[TBus]):
             value: Net
             if name not in kwargs:
                 if _isDefault:
-                    net = netCls.netType(size=netCls.size, baseIndex=netCls.baseIndex,
+                    net = netCls.netType(dims=netCls.dims,
                                          isReg=netCls is Reg, name=name, frameDepth=_frameDepth + 1)
                     value = net.output if netCls.isOutput else net.input
                     setattr(self, name, value)
@@ -110,12 +111,10 @@ class Bus(Generic[TBus]):
                 raise ParseException(f"Net `{name}` direction mismatch")
             if _isAdjacent and netCls.isOutput == value.isOutput:
                 raise Exception(f"Unexpected adjacent direction for net `{name}`")
-            if netCls.sizeSpecified:
-                if value.size != netCls.size:
-                    raise ParseException(f"Unexpected size for net `{name}`: {value.size} != {netCls.size}")
-                if value.baseIndex != netCls.baseIndex:
-                    raise ParseException(f"Unexpected base index for net `{name}`: "
-                                        f"{value.baseIndex} != {netCls.baseIndex}")
+            if netCls.dims is not None and not Dimensions.MatchAny(netCls.dims, value.dims):
+                raise ParseException(
+                    f"Unexpected shape for net `{name}`: "
+                    f"{Dimensions.StrAny(value.dims)} != {Dimensions.StrAny(netCls.dims)}")
             setattr(self, name, value)
             if value.initialName is None:
                 value.SetName(f"{name}")

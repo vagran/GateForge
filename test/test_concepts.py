@@ -51,7 +51,6 @@ class SizedBus(Bus["SizedBus"]):
     ur: OutputNet[Reg]
 
 
-@unittest.skip("XXX")
 class TestBus(TestBase):
 
     def test_basic(self):
@@ -152,10 +151,10 @@ class TestBus(TestBase):
         b = SizedBus.Create(w=wire((11, 8)).input, r=reg(8).output,
                             uw=wire(2).input, ur=reg(4).output)
         self.assertIsInstance(b.w.src, Wire)
-        self.assertEqual(b.w.size, 4)
+        self.assertEqual(b.w.vectorSize, 4)
         self.assertEqual(b.w.baseIndex, 8)
         self.assertIsInstance(b.r.src, Reg)
-        self.assertEqual(b.r.size, 8)
+        self.assertEqual(b.r.vectorSize, 8)
         self.assertEqual(b.r.baseIndex, 0)
         self.assertEqual(b.w.effectiveName, "w")
         self.assertEqual(b.r.effectiveName, "r")
@@ -177,19 +176,19 @@ class TestBus(TestBase):
         b = SizedBus.CreateDefault()
 
         self.assertIsInstance(b.w.src, Wire)
-        self.assertEqual(b.w.size, 4)
+        self.assertEqual(b.w.vectorSize, 4)
         self.assertEqual(b.w.baseIndex, 8)
 
         self.assertIsInstance(b.r.src, Reg)
-        self.assertEqual(b.r.size, 8)
+        self.assertEqual(b.r.vectorSize, 8)
         self.assertEqual(b.r.baseIndex, 0)
 
         self.assertIsInstance(b.uw.src, Wire)
-        self.assertEqual(b.uw.size, 1)
+        self.assertEqual(b.uw.vectorSize, 1)
         self.assertEqual(b.uw.baseIndex, 0)
 
         self.assertIsInstance(b.ur.src, Reg)
-        self.assertEqual(b.ur.size, 1)
+        self.assertEqual(b.ur.vectorSize, 1)
         self.assertEqual(b.ur.baseIndex, 0)
 
         self.assertEqual(b.w.effectiveName, "w")
@@ -198,7 +197,6 @@ class TestBus(TestBase):
         self.assertEqual(b.ur.effectiveName, "ur")
 
 
-@unittest.skip("XXX")
 class TestInterface(TestBase):
     def test_basic(self):
         i = SampleInterface.Create(w=wire().input, r=reg().output)

@@ -18,7 +18,6 @@ class TestBase(unittest.TestCase):
         self.assertEqual(len(result.warnings), expectedWarnings)
 
 
-@unittest.skip("XXX")
 class Test(TestBase):
 
     def test_single_in_out(self):
@@ -172,7 +171,7 @@ endmodule
             r2 = reg("r2").input.port
             r3 = reg("r3").input.port
             w4 = wire("w4").output.port
-            w5 = wire(8, "w5").input.port
+            w5 = wire("w5", 8).input.port
             w1 <<= r2 == r3
             w4 <<= r2 == w5
 
