@@ -443,6 +443,7 @@ class Dimensions:
             Dimensions._ValidateDims(unpackedDims)
             self.unpacked = unpackedDims
 
+
     @property
     def isArray(self) -> bool:
         return self.unpacked is not None
@@ -726,6 +727,13 @@ class Expression(SyntaxNode):
         return self.dims.vectorSize
 
 
+    @property
+    def isArray(self) -> bool:
+        if self.dims is None:
+            return False
+        return self.dims.isArray
+
+
     def __getitem__(self, index: "int | bool | slice | Expression") -> "SliceExpr":
         if self.dims is None:
             raise ParseException(f"Attempting slice dimensionless expression: {self}")
@@ -824,13 +832,6 @@ class Expression(SyntaxNode):
         if self.dims is None:
             return 1
         return len(self.dims)
-
-
-    @property
-    def vector_size(self) -> int:
-        if self.dims is None:
-            return 1
-        return self.dims.vectorSize
 
 
     def __ilshift__(self, rhs: "RawExpression") -> "Expression":
@@ -1518,11 +1519,10 @@ class Port(Net):
 
 
 class ConcatExpr(Expression):
+    dims: Dimensions
     # Left to right
     args: List[Expression]
-    # Minimal number of bits required to present the value without trimming. Useful when having
-    # left-most const value with unbound size.
-    valueSize: int
+
 
     def __init__(self, args: Iterable[RawExpression], frameDepth: int):
         super().__init__(frameDepth + 1)
@@ -1542,37 +1542,29 @@ class ConcatExpr(Expression):
                 yield Expression._FromRaw(e, frameDepth + 1)
 
 
-    #XXX
     def _CalculateSize(self):
         size = 0
-        valueSize = 0
         isFirst = True
         isLhs = True
+
         for e in self.args:
+            if e.isArray:
+                raise ParseException("Unpacked array is not supported in concatenation")
             if isFirst:
                 isFirst = False
-                if e.size is None:
-                    size = None
-                    if hasattr(e, "valueSize"):
-                        valueSize = e.valueSize
-                    else:
-                        valueSize = None
-                    continue
+                if e.isUnboundSize:
+                    self.isUnboundSize = True
             else:
-                if e.size is None:
+                if e.isUnboundSize:
                     raise ParseException(
                         "Concatenation can have expression with unbound size on left-most position"
                          f" only, unbound expression: {e}")
-            if size is not None:
-                size += e.size
-            if valueSize is not None:
-                valueSize += e.size
+            size += e.vectorSize
             if not e.isLhs:
                 isLhs = False
-        self.size = size
+
+        self.dims = Dimensions(((0, size),), None)
         self.isLhs = isLhs
-        if valueSize is not None:
-            self.valueSize = valueSize
 
 
     def _GetChildren(self) -> Iterator["Expression"]:

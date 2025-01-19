@@ -161,12 +161,12 @@ class Slice(TestBase):
 
         self.CheckExpr(wire("w", (15, 8))[wire("w2")], "w[w2]")
 
-        self.assertEqual(1, wire().vector_size)
-        self.assertEqual(5, wire(5).vector_size)
-        self.assertEqual(8, wire((11, 4)).vector_size)
-        self.assertEqual(32, wire((11, 4), 4).vector_size)
-        self.assertEqual(48, wire((11, 4), (15, 10)).vector_size)
-        self.assertEqual(48, wire((11, 4), (15, 10)).array(4).vector_size)
+        self.assertEqual(1, wire().vectorSize)
+        self.assertEqual(5, wire(5).vectorSize)
+        self.assertEqual(8, wire((11, 4)).vectorSize)
+        self.assertEqual(32, wire((11, 4), 4).vectorSize)
+        self.assertEqual(48, wire((11, 4), (15, 10)).vectorSize)
+        self.assertEqual(48, wire((11, 4), (15, 10)).array(4).vectorSize)
 
         with self.assertRaises(ParseException):
             wire((15, 8))[0]
@@ -184,14 +184,14 @@ class Slice(TestBase):
             wire()[0]
 
 
-@unittest.skip("XXX")
 class Concat(TestBase):
 
     def test_basic(self):
         w1 = wire("w1")
-        w2 = wire(8, "w2")
+        w2 = wire("w2", 8)
         w3 = wire("w3")
         w4 = wire("w4")
+        w5 = wire("w5", 2, 3)
         self.CheckExpr(w1 % w2, "{w1, w2}")
         self.CheckExpr(w1 % w2 % w3, "{w1, w2, w3}")
         self.CheckExpr(w1 % w2 % w3 % w4, "{w1, w2, w3, w4}")
@@ -205,16 +205,19 @@ class Concat(TestBase):
             self.CheckExpr(w1 % w2 % 5, "")
         self.CheckExpr(w1 % const(5, 3) % w3, "{w1, 3'h5, w3}")
 
-        self.assertEqual((w1 % w2).size, 9)
-        self.assertEqual((w1 % w2 % w3).size, 10)
-        self.assertEqual((w1 % w2 % w3 % w4).size, 11)
+        self.assertEqual((w1 % w2).vectorSize, 9)
+        self.assertEqual((w1 % w2 % w3).vectorSize, 10)
+        self.assertEqual((w1 % w2 % w3 % w4).vectorSize, 11)
         self.assertEqual(len(w1 % w2 % w3 % w4), 11)
+        self.assertEqual((w1 % w2 % w5).vectorSize, 15)
 
-        e = const(5) % w1
-        self.assertIsNone(e.size)
-        self.assertEqual(e.valueSize, 4)
+        self.assertEqual((const(5) % w1).vectorSize, 4)
+
         with self.assertRaises(ParseException):
             w1 % 5
+
+        with self.assertRaises(ParseException):
+            w1 % wire(5).array(10)
 
 
 @unittest.skip("XXX")
