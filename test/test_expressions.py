@@ -137,6 +137,9 @@ class Slice(TestBase):
         self.CheckExpr(const(0xde)[7:4][0], "1'h1")
         self.CheckExpr(const(0xde)[15:8], "8'h0")
 
+        with self.assertRaises(ParseException):
+            const(0xde)[7:4][4]
+
         # Reverse endianness in slice
         with self.assertRaises(ParseException):
             wire((15, 8))[10:12]

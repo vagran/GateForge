@@ -35,7 +35,6 @@ class TestBase(unittest.TestCase):
         self.assertEqual(len(self.compileCtx.GetWarnings()), expectedWarnings)
 
 
-@unittest.skip("XXX")
 class TestAssignments(TestBase):
 
     def test_continuous_assignment_const(self):
@@ -71,22 +70,22 @@ class TestAssignments(TestBase):
 
 
     def test_continuous_assignment_reg_wire_slice(self):
-        r = reg(8, "r")
-        w = wire(16, "w")
+        r = reg("r", 8)
+        w = wire("w", 16)
         r <<= w[11:4]
         self.CheckResult("assign r = w[11:4];", 1)
 
 
     def test_continuous_assignment_reg_wire_slice_less_bits(self):
-        r = reg(8, "r")
-        w = wire(16, "w")
+        r = reg("r", 8)
+        w = wire("w", 16)
         r <<= w[11:5]
         self.CheckResult("assign r = w[11:5];", 2)
 
 
     def test_continuous_assignment_reg_wire_slice_more_bits(self):
-        r = reg(8, "r")
-        w = wire(16, "w")
+        r = reg("r", 8)
+        w = wire("w", 16)
         with self.assertRaises(ParseException):
             r <<= w[11:3]
 
@@ -109,6 +108,7 @@ class TestAssignments(TestBase):
             c[15:8] <<= 42
 
 
+    @unittest.skip("XXX")
     def test_continuous_assignment_concat_lhs(self):
         w1 = wire("w1")
         w2 = wire("w2")
@@ -116,6 +116,7 @@ class TestAssignments(TestBase):
         self.CheckResult("assign {w1, w2} = 'h3;")
 
 
+    @unittest.skip("XXX")
     def test_continuous_assignment_concat_non_lhs(self):
         w1 = wire("w1")
         w2 = wire("w2")
@@ -124,7 +125,7 @@ class TestAssignments(TestBase):
 
 
     def test_slice_assignment(self):
-        w = wire(8, "w")
+        w = wire("w", 8)
         w[3:0] <<= 15
         self.CheckResult("assign w[3:0] = 'hf;")
         with self.assertRaises(ParseException):
@@ -133,7 +134,7 @@ class TestAssignments(TestBase):
     #XXX multi-dimensional-vector and arrays
 
     def test_multiple_assignments(self):
-        w = wire(8, "w")
+        w = wire("w", 8)
         w[3:0] <<= 15
         w[4] <<= 0
         w[7:5] <= 3
@@ -144,7 +145,7 @@ class TestAssignments(TestBase):
 
 
     def test_multiple_assignments_slice(self):
-        w = wire(8, "w")
+        w = wire("w", 8)
         w[7:5][1] <<= 1
         w[7] <<= 1
         w[5] <<= 1
@@ -152,8 +153,35 @@ class TestAssignments(TestBase):
             w[6] <<= 1
 
 
+    def test_multiple_assignments_md_slice(self):
+        w = wire("w", [11, 8], 8).array(2)
+        w[1] <<= 0
+        with self.assertRaises(ParseException):
+            w[1] <<= 1
+        with self.assertRaises(ParseException):
+            w[1][11] <<= 1
+        with self.assertRaises(ParseException):
+            w[1][11][1] <<= 1
+
+        w[0][11:10][1] <<= 1
+        with self.assertRaises(ParseException):
+            w[0][11] <<= 1
+        w[0][10] <<= 1
+        with self.assertRaises(ParseException):
+            w[0][10][2] <<= 1
+        w[0][9][0] <<= 1
+        with self.assertRaises(ParseException):
+            w[0][9:9][0][0] <<= 1
+        w[0][9][1] <<= 1
+        with self.assertRaises(ParseException):
+            w[0][9] <<= 1
+        with self.assertRaises(ParseException):
+            w[0] <<= 1
+
+
+    @unittest.skip("XXX")
     def test_multiple_assignments_concat(self):
-        w = wire(8, "w")
+        w = wire("w", 8)
         c = (w[7:5] % w[3:1])
         c <<= 0
         w[4] <<= 1
@@ -172,8 +200,9 @@ class TestAssignments(TestBase):
             w[1] <<= 1
 
 
+    @unittest.skip("XXX")
     def test_multiple_assignments_concat_slice(self):
-        w = wire(8, "w")
+        w = wire("w", 8)
         w[2:0] <<= 7
         w[4] <<= 0
         w[7:5] <= 3

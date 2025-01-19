@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from io import TextIOBase
 import threading
-from typing import Any, Generic, Iterable, Iterator, List, Optional, Sequence, Tuple, Type, TypeVar
+from typing import Any, Generator, Generic, Iterable, Iterator, List, Optional, Sequence, Tuple, \
+    Type, TypeVar
 import traceback
 import re
 import math
@@ -618,6 +619,42 @@ class Dimensions:
         return f"{baseIndex + size + 1}:{baseIndex}"
 
 
+    @staticmethod
+    def EnumerateIndices(dim: Tuple[int, int] | int) -> Generator[int]:
+        if isinstance(dim, int):
+            yield dim
+            return
+        baseIndex, size = dim
+        if size < 0:
+            for i in range(baseIndex, baseIndex + size, -1):
+                yield i
+        else:
+            for i in range(baseIndex, baseIndex + size):
+                yield i
+
+
+    @staticmethod
+    def GetIndex(dim: Tuple[int, int], index: int) -> int:
+        """
+        :param dim: Dimension range.
+        :param index: Zero-based index in the range.
+        :returns: Index from the range.
+        """
+        if index >= abs(dim[1]):
+            raise Exception(f"Index out of range: {index} for {Dimensions.StrDimension(dim)}")
+        if dim[1] < 0:
+            return dim[0] - index
+        return dim[0] + index
+
+
+    @staticmethod
+    def StrIndex(index: Tuple[int,...]) -> str:
+        s = ""
+        for i in index:
+            s += f"[{i}]"
+        return s
+
+
     def _CheckIndex(self, index: int):
         dim = self._GetOutermostDimension()
         baseIndex, size = dim
@@ -637,13 +674,13 @@ class Dimensions:
         """
         if self.unpacked is not None:
             if newDim is not None:
-                return Dimensions(self.packed, (newDim,) + self.unpacked[1:])
+                return Dimensions(self.packed, (newDim, *self.unpacked[1:]))
             if len(self.unpacked) == 1:
                 return Dimensions(self.packed, None)
             return Dimensions(self.packed, self.unpacked[1:])
         assert self.packed is not None
         if newDim is not None:
-            return Dimensions((newDim,) + self.packed[1:], None)
+            return Dimensions((newDim, *self.packed[1:]), None)
         if len(self.packed) == 1:
             return None
         return Dimensions(self.packed[1:], None)
@@ -782,7 +819,8 @@ class Expression(SyntaxNode):
     def _Assign(self, bitIndex: Optional[Tuple[int, ...]], frameDepth: int):
         """Called to mark assignment to the expression.
 
-        :param bitIndex: Bit index which is driven. None if whole expression affected.
+        :param bitIndex: Bit index which is driven, tuple of indices of each dimension, left to
+            right. None if whole expression affected.
         """
         assert self.isWired
         assert self.isLhs
@@ -1029,6 +1067,11 @@ class Const(Expression):
             size = 1
         else:
             index, size = slice
+        if index < 0:
+            raise ParseException(f"Negative index for constant slice: {index}")
+        if not self.isUnboundSize:
+            # Validate range
+            self.dims.Slice(s)
         mask = (1 << size) - 1
         return Const((self.value >> index) & mask, size, frameDepth=1)
 
@@ -1125,8 +1168,6 @@ class AssignmentTracker:
 
 
         def Get(self, index: Tuple[int, ...]) -> Optional[traceback.FrameSummary]:
-            if len(index) < 1:
-                raise Exception("Empty prefix")
             if self.value is not None:
                 return self.value
             for child in self.children:
@@ -1272,7 +1313,7 @@ class Net(Expression):
                 prevFrame = None
             if prevFrame is not None:
                 raise ParseException(
-                    f"Net re-assignment, `{self}[{bitIndex}]` was previously assigned at " +
+                    f"Net re-assignment, `{self}{Dimensions.StrIndex(bitIndex)}` was previously assigned at " +
                     SyntaxNode.GetFullLocation(prevFrame))
             if ctx.isProceduralBlock:
                 self.procAssignments.Set(bitIndex, frame)
@@ -1281,13 +1322,7 @@ class Net(Expression):
 
         frame = self.GetFrame(frameDepth + 1)
         if bitIndex is None:
-            prevFrame = self.nonProcAssignments.root.GetFirstValue()
-            if prevFrame is None and not ctx.isProceduralBlock:
-                prevFrame = self.procAssignments.root.GetFirstValue()
-            if prevFrame is not None:
-                raise ParseException(
-                    f"Net re-assignment, `{self}` was previously assigned at " +
-                    SyntaxNode.GetFullLocation(prevFrame))
+            _AssignBit((), frame)
         else:
             _AssignBit(bitIndex, frame)
 
@@ -1571,6 +1606,22 @@ class ConcatExpr(Expression):
         yield from self.args
 
 
+    #XXX
+    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+        if bitIndex is None:
+            for arg in self.args:
+                arg._Assign(None, frameDepth + 1)
+        else:
+            index = 0
+            for arg in reversed(self.args):
+                if arg.size is None or bitIndex < index + arg.size:
+                    assert bitIndex >= index
+                    arg._Assign(bitIndex - index, frameDepth + 1)
+                    return
+                index += arg.size
+            raise Exception(f"Assignment index out of range: {bitIndex}")
+
+
     def Render(self, ctx: RenderCtx):
         ctx.Write("{")
         isFirst = True
@@ -1585,7 +1636,7 @@ class ConcatExpr(Expression):
 
 class SliceExpr(Expression):
     arg: Expression
-    # Index is always zero-based, nets' base index is applied before if needed.
+    # Either single constant index, constant range or single dynamic index
     index: int | Tuple[int, int] | "Expression"
 
 
@@ -1604,12 +1655,27 @@ class SliceExpr(Expression):
 
 
     def _Assign(self, bitIndex: Optional[Tuple[int,...]], frameDepth: int):
-        #XXX
+        if isinstance(self.index, Expression):
+            # Dynamic slicing, cannot track
+            return
+
+        if isinstance(self.index, int):
+            if bitIndex is None:
+                self.arg._Assign((self.index,), frameDepth + 1)
+            else:
+                self.arg._Assign((self.index, *bitIndex), frameDepth + 1)
+            return
+
+        # Slice range
         if bitIndex is None:
-            for i in range(self.index, self.index + self.size):
-                self.arg._Assign(i, frameDepth + 1)
-        else:
-            self.arg._Assign(self.index + bitIndex, frameDepth + 1)
+            for i in Dimensions.EnumerateIndices(self.index):
+                self.arg._Assign((i,), frameDepth + 1)
+            return
+
+        assert len(bitIndex) > 0
+
+        idx = Dimensions.GetIndex(self.index, bitIndex[0])
+        self.arg._Assign((idx, *bitIndex[1:]), frameDepth + 1)
 
 
     def Render(self, ctx: RenderCtx):
@@ -1915,8 +1981,7 @@ class AssignmentStatement(Statement):
             ctx.proceduralBlock.logicType == ProceduralBlock.LogicType.COMB
         lhs._Wire(True, frameDepth + 1)
         rhs._Wire(False, frameDepth + 1)
-        #XXX
-        # lhs._Assign(None, frameDepth + 1)
+        lhs._Assign(None, frameDepth + 1)
 
         if self.isProceduralBlock:
             if not self.isBlocking and not self.isCombinationalBlock:
@@ -1936,7 +2001,7 @@ class AssignmentStatement(Statement):
 
         if rhs.vectorSize > lhs.vectorSize:
             raise ParseException(f"Assignment size exceeded: {lhs.vectorSize} bits <<= {rhs.vectorSize} bits")
-        elif rhs.vectorSize < lhs.vectorSize:
+        elif not rhs.isUnboundSize and rhs.vectorSize < lhs.vectorSize:
             ctx.Warning(f"Assignment of insufficient size: {lhs.vectorSize} bits <<= {rhs.vectorSize} bits",
                         self.srcFrame)
 
