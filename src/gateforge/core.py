@@ -816,12 +816,12 @@ class Expression(SyntaxNode):
         return Expression._CheckType(e)
 
 
-    def RenderNested(self, ctx: RenderCtx):
+    def RenderNested(self, ctx: RenderCtx, useCurly: bool = False):
         if self.needParentheses:
-            ctx.Write("(")
+            ctx.Write("{" if useCurly else "(")
         self.Render(ctx)
         if self.needParentheses:
-            ctx.Write(")")
+            ctx.Write("}" if useCurly else ")")
 
 
     def __bool__(self):
@@ -1549,7 +1549,7 @@ class ConcatExpr(Expression):
 
         for e in self.args:
             if e.isArray:
-                raise ParseException("Unpacked array is not supported in concatenation")
+                raise ParseException(f"Unpacked array is not supported in concatenation: {e}")
             if isFirst:
                 isFirst = False
                 if e.isUnboundSize:
@@ -1613,7 +1613,8 @@ class SliceExpr(Expression):
 
 
     def Render(self, ctx: RenderCtx):
-        self.arg.RenderNested(ctx)
+        # Arithmetic expression cannot be sliced in Verilog, enclose in curly braces
+        self.arg.RenderNested(ctx, isinstance(self.arg, ArithmeticExpr))
         ctx.Write("[")
         if isinstance(self.index, int):
             ctx.Write(str(self.index))
@@ -1635,7 +1636,7 @@ class ArithmeticExpr(Expression):
         self.strValue = f"Op({op})"
         self.op = op
         self.args = list(self._FlattenArithmeticExpr(args, frameDepth + 1))
-        self.size = self._CalculateSize()
+        self._CalculateSize()
 
 
     def _FlattenArithmeticExpr(self, src: Iterable[RawExpression], frameDepth: int) -> Iterator[Expression]:
@@ -1653,11 +1654,13 @@ class ArithmeticExpr(Expression):
 
 
     def _CalculateSize(self):
-        size = None
+        size = 0
         for e in self.args:
-            if size is not None and (size is None or e.size > size):
-                size = e.size
-        self.size = size
+            if e.isArray:
+                raise ParseException(f"Unpacked array is not supported in arithmetic expression: {e}")
+            if e.vectorSize > size:
+                size = e.vectorSize
+        self.dims = Dimensions(((0, size),), None)
 
 
     def _ToSensitivityList(self, frameDepth: int) -> "SensitivityList":
@@ -1755,10 +1758,10 @@ class ReductionOperator(UnaryOperator):
             raise ParseException("Reduction operator applied on another reduction, probably a bug")
         super().__init__(op, arg, frameDepth + 1)
         self.strValue = f"Reduce({op})"
-        if self.arg.dims is not None and self.arg.dims.isArray:
+        if self.arg.isArray:
             raise ParseException("Reduction operator cannot be applied to unpacked array")
         self.dims = Dimensions(((0, 1),), None)
-        if self.arg.dims is not None and self.arg.dims.vectorSize == 1:
+        if self.arg.vectorSize == 1:
             CompileCtx.Current().Warning(f"Reduction operator applied to 1 bit argument {arg}",
                                          self.srcFrame)
 

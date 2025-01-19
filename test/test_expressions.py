@@ -220,12 +220,11 @@ class Concat(TestBase):
             w1 % wire(5).array(10)
 
 
-@unittest.skip("XXX")
 class Arithmetic(TestBase):
 
     def test_basic(self):
         w1 = wire("w1")
-        w2 = wire(8, "w2")
+        w2 = wire("w2", 8)
         w3 = wire("w3")
         w4 = wire("w4")
 
@@ -256,7 +255,7 @@ class Arithmetic(TestBase):
         self.CheckExpr(~(w1 | w2), "~(w1 | w2)")
         self.CheckExpr(~(w1 | w2) | ~w3, "~(w1 | w2) | ~w3")
         self.CheckExpr(~(w1 | ~w2) & (~w3 | w4), "~(w1 | ~w2) & (~w3 | w4)")
-        self.CheckExpr(~(w1 | ~w2)[7:4] & (~w3 | w4), "~(w1 | ~w2)[7:4] & (~w3 | w4)")
+        self.CheckExpr(~(w1 | ~w2)[7:4] & (~w3 | w4), "~{w1 | ~w2}[7:4] & (~w3 | w4)")
 
         self.CheckExpr(w1.xnor(w2), "w1 ~^ w2")
         self.CheckExpr(w1.xnor(w2.reduce_and), "w1 ~^ &w2")
