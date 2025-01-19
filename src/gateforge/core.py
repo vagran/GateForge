@@ -1779,8 +1779,7 @@ class ReplicationOperator(Expression):
             raise ParseException("Replication operator cannot be applied to unpacked array")
         if self.arg.isUnboundSize:
             raise ParseException(f"Replication operand should have size bound: {arg}")
-        size = self.dims.vectorSize if self.dims is not None else 1
-        self.dims = Dimensions(((0, size * count),), None)
+        self.dims = Dimensions(((0, self.arg.vectorSize * count),), None)
 
 
     def _GetChildren(self) -> Iterator["Expression"]:

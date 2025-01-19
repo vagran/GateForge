@@ -271,11 +271,10 @@ class Arithmetic(TestBase):
             w1.reduce_and.reduce_nand
 
 
-@unittest.skip("XXX")
 class Comparison(TestBase):
     def test_basic(self):
         w1 = wire("w1")
-        w2 = wire(8, "w2")
+        w2 = wire("w2", 8)
         w3 = wire("w3")
         w4 = wire("w4")
 
@@ -297,15 +296,20 @@ class Comparison(TestBase):
                 pass
 
 
-@unittest.skip("XXX")
 class Replication(TestBase):
     def test_basic(self):
         w1 = wire("w1")
         self.CheckExpr(w1.replicate(5), "{5{w1}}")
+        self.assertEqual(5, w1.replicate(5).vectorSize)
         self.CheckExpr(const(5, 3).replicate(4), "{4{3'h5}}")
         # Unbound size replication
         with self.assertRaises(ParseException):
             (const(5) % w1).replicate(3)
+
+        self.CheckExpr(wire("w", (5, 2)).replicate(5), "{5{w}}")
+        self.assertEqual(20, wire("w", (5, 2)).replicate(5).vectorSize)
+        with self.assertRaises(ParseException):
+            w1.array(5).replicate(3)
 
 
 @unittest.skip("XXX")
