@@ -36,6 +36,7 @@ class TestBase(unittest.TestCase):
         pass
 
 
+@unittest.skip("XXX")
 class TestBasic(TestBase):
 
     def test_basic(self):

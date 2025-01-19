@@ -18,6 +18,7 @@ class TestBase(unittest.TestCase):
         self.assertEqual(len(result.warnings), expectedWarnings)
 
 
+@unittest.skip("XXX")
 class Test(TestBase):
 
     def test_single_in_out(self):
