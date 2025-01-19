@@ -234,7 +234,6 @@ class TestAssignments(TestBase):
         w1[11][2] <<= 1
 
 
-@unittest.skip("XXX")
 class TestInPlaceOperators(TestBase):
 
     def test_add(self):
@@ -264,7 +263,7 @@ class TestInPlaceOperators(TestBase):
 
 
     def test_or_reg(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w = wire("w")
         with always(w.posedge):
             r |= 4
@@ -275,11 +274,10 @@ end
 """.strip())
 
 
-@unittest.skip("XXX")
 class ProceduralBlocks(TestBase):
 
     def test_empty_sl(self):
-        w = wire(8, "w")
+        w = wire("w", 8)
         with always():
             w //= 4
         self.CheckResult("""
@@ -290,7 +288,7 @@ end
 
 
     def test_wire_procedural_assignment(self):
-        w = wire(8, "w")
+        w = wire("w", 8)
         with self.assertRaises(ParseException):
             with always():
                 w <<= 4
@@ -303,7 +301,7 @@ end
 
 
     def test_reg_procedural_assignment(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         with always():
             r <<= 4
         self.CheckResult("""
@@ -314,7 +312,7 @@ end
 
 
     def test_reg_single_trigger(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w = wire("w")
         with always(w):
             r <<= 4
@@ -326,7 +324,7 @@ end
 
 
     def test_reg_two_triggers(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         with always(w1 | w2):
@@ -339,7 +337,7 @@ end
 
 
     def test_reg_three_triggers(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         w3 = wire("w3")
@@ -353,7 +351,7 @@ end
 
 
     def test_reg_single_edge_trigger(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w = wire("w")
         with always(w.posedge):
             r <<= 4
@@ -365,7 +363,7 @@ end
 
 
     def test_reg_two_edge_triggers(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         with always(w1.posedge | w2.negedge):
@@ -378,7 +376,7 @@ end
 
 
     def test_reg_three_edge_triggers(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         w3 = wire("w3")
@@ -416,7 +414,7 @@ end
 
 
     def test_if_statement(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         with always():
@@ -432,7 +430,7 @@ end
 
 
     def test_if_else_statement(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         with always():
@@ -452,7 +450,7 @@ end
 
 
     def test_if_else_if_statement(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         with always():
@@ -472,7 +470,7 @@ end
 
 
     def test_if_else_if_else_statement(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         with always():
@@ -496,7 +494,7 @@ end
 
 
     def test_if_else_if_else_nested_statement(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         with always():
@@ -527,7 +525,7 @@ end
 
 
     def test_if_statement_not_in_procedural_block(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
         with self.assertRaises(ParseException):
@@ -536,21 +534,21 @@ end
 
 
     def test_if_statement_else_no_match(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         with self.assertRaises(ParseException):
             with _else():
                 r <<= 4
 
 
     def test_if_statement_else_if_no_match(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         with self.assertRaises(ParseException):
             with _elseif(r > 0):
                 r <<= 4
 
 
     def test_if_statement_else_no_match_2(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         with self.assertRaises(ParseException):
             with _if(r > 0):
                 r <<= 1
@@ -567,7 +565,7 @@ end
 
 
     def test_when_statement(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
 
@@ -598,7 +596,7 @@ end
 
 
     def test_when_case_size_mismatch(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
 
@@ -629,7 +627,7 @@ end
 
 
     def test_when_no_procedural_block(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
         w2 = wire("w2")
 
@@ -644,7 +642,7 @@ end
 
 
     def test_empty_when(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         with always():
             with _when(r):
                 pass
@@ -657,7 +655,7 @@ end
 
 
     def test_when_unexpected_code(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
 
         with self.assertRaises(ParseException):
@@ -671,7 +669,7 @@ end
 
 
     def test_when_multiple_default(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w1 = wire("w1")
 
         with self.assertRaises(ParseException):
@@ -687,7 +685,7 @@ end
 
     def test_sv_inferred_comb(self):
         self.ctx.options.svProceduralBlocks = True
-        w = wire(8, "w")
+        w = wire("w", 8)
         with always():
             w //= 4
         self.CheckResult("""
@@ -699,7 +697,7 @@ end
 
     def test_sv_inferred_ff(self):
         self.ctx.options.svProceduralBlocks = True
-        r = reg(8, "r")
+        r = reg("r", 8)
         w = wire("w")
         with always(w.posedge):
             r <<= 4
@@ -711,7 +709,7 @@ end
 
 
     def test_comb(self):
-        w = wire(8, "w")
+        w = wire("w", 8)
         with always_comb():
             w <<= 4
         self.CheckResult("""
@@ -722,7 +720,7 @@ end
 
 
     def test_ff(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         w = wire("w")
         with always_ff(w.posedge):
             r <<= 4
@@ -734,7 +732,7 @@ end
 
 
     def test_latch(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         with always_latch():
             r <<= 4
         self.CheckResult("""
@@ -744,11 +742,10 @@ end
 """.strip())
 
 
-@unittest.skip("XXX")
 class InitialBlocks(TestBase):
 
     def test_empty_sl(self):
-        r = reg(8, "r")
+        r = reg("r", 8)
         with initial():
             r <<= 0xff
         self.CheckResult("""
@@ -758,7 +755,7 @@ end
 """.strip())
 
 
-@unittest.skip("XXX")
+
 class ModuleInstantiations(TestBase):
 
     def test_basic(self):
@@ -767,7 +764,7 @@ class ModuleInstantiations(TestBase):
         m = module("MyModule",
                    wire("a").input,
                    wire("b").output,
-                   reg([3, 1], "c").input)
+                   reg("c", [3, 1]).input)
         m(a=w, b=r, c=const(1) % w)
         self.CheckResult("""
 MyModule MyModule_0(
@@ -783,7 +780,7 @@ MyModule MyModule_0(
         m = module("MyModule",
                    wire("a").input,
                    wire("b").output,
-                   reg([3, 1], "c").input,
+                   reg("c", [3, 1]).input,
                    parameter("p1"),
                    parameter("p2"),
                    parameter("p3"))
@@ -805,7 +802,7 @@ MyModule #(
         m = module("MyModule",
                    wire("a").input,
                    wire("b").output,
-                   reg([3, 1], "c").input)
+                   reg("c", [3, 1]).input)
         with namespace("NS"):
             m(a=w, b=r, c=const(1) % w)
         self.CheckResult("""
@@ -916,7 +913,7 @@ MyModule MyModule_0(
         m = module("MyModule",
                    wire("a").input,
                    wire("b").output,
-                   reg([3, 1], "c").input)
+                   reg("c", [3, 1]).input)
         m(a=w, b=r, c=const(1, 1) % w)
         self.CheckResult("""
 MyModule MyModule_0(

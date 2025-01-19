@@ -1212,6 +1212,7 @@ class AssignmentTracker:
                 node = AssignmentTracker.Node()
                 node.prefix = tail
                 node.value = value
+                node.children = list()
                 self.children.append(node)
             else:
                 node = AssignmentTracker.Node()
@@ -2224,13 +2225,15 @@ class WhenStatement(Statement):
 
 
     def _CheckSize(self):
-        size = self.switch.size
-        if size is None:
-            return
         ctx = CompileCtx.Current()
         for e in self.conditions:
-            if e.size is not None and e.size != size:
-                ctx.Warning(f"'`_when` expression size mismatch: {size} != {e.size} ({e})")
+            if (self.switch.isArray or e.isArray):
+                if not Dimensions.MatchAny(self.switch.dims, e.dims):
+                    raise ParseException(
+                        f"Case expression shape mismatch: {Dimensions.StrAny(self.switch.dims)} != "
+                        f"{Dimensions.StrAny(e.dims)} ({e})")
+            elif e.vectorSize != self.switch.vectorSize:
+                ctx.Warning(f"'`_when` expression size mismatch: {self.switch.vectorSize} != {e.vectorSize} ({e})")
 
 
 class EdgeTrigger(SyntaxNode):
@@ -2497,9 +2500,10 @@ class ModuleInstance(Statement):
                 raise ParseException(f"No such port in module: `{name}`")
             port = module.ports[name]
             e._Wire(port.isOutput, frameDepth + 1)
-            if e.size is not None and port.size != e.size:
+            if not e.isUnboundSize and not Dimensions.MatchAny(port.dims, e.dims):
                 CompileCtx.Current().Warning(
-                    f"Port `{port}` binding size mismatch: {port.size} != {e.size} ({e})")
+                    f"Port `{port}` binding shape mismatch: "
+                    f"{Dimensions.StrAny(port.dims)} != {Dimensions.StrAny(e.dims)} ({e})")
             self.portBindings[name] = e
 
         for name, port in module.ports.items():
