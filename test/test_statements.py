@@ -108,7 +108,6 @@ class TestAssignments(TestBase):
             c[15:8] <<= 42
 
 
-    @unittest.skip("XXX")
     def test_continuous_assignment_concat_lhs(self):
         w1 = wire("w1")
         w2 = wire("w2")
@@ -116,7 +115,6 @@ class TestAssignments(TestBase):
         self.CheckResult("assign {w1, w2} = 'h3;")
 
 
-    @unittest.skip("XXX")
     def test_continuous_assignment_concat_non_lhs(self):
         w1 = wire("w1")
         w2 = wire("w2")
@@ -131,7 +129,12 @@ class TestAssignments(TestBase):
         with self.assertRaises(ParseException):
             w[3:0] = 15
 
-    #XXX multi-dimensional-vector and arrays
+
+    def test_concat_slice_multiple_dimensions(self):
+        w = wire("w", 8)
+        with self.assertRaises(ParseException):
+            (const(5) % w % w)[3][2] <<= 15
+
 
     def test_multiple_assignments(self):
         w = wire("w", 8)
@@ -179,7 +182,6 @@ class TestAssignments(TestBase):
             w[0] <<= 1
 
 
-    @unittest.skip("XXX")
     def test_multiple_assignments_concat(self):
         w = wire("w", 8)
         c = (w[7:5] % w[3:1])
@@ -200,7 +202,6 @@ class TestAssignments(TestBase):
             w[1] <<= 1
 
 
-    @unittest.skip("XXX")
     def test_multiple_assignments_concat_slice(self):
         w = wire("w", 8)
         w[2:0] <<= 7
@@ -210,6 +211,27 @@ class TestAssignments(TestBase):
         (w[4:3] % w[1])[1] <<= 1
         with self.assertRaises(ParseException):
             w[3] <<= 1
+
+
+    def test_multiple_assignments_concat_md_flattening_slice(self):
+        w1 = wire("w1", [11, 8], 8)
+        w2 = wire("w2", 8)
+
+        # w2[1]
+        (w1[11:10] % w2)[1] <<= 1
+
+        with self.assertRaises(ParseException):
+            w2[1] <<= 1
+        w2[0] <<= 1
+        w2[2] <<= 1
+
+        # w1[11][1]
+        (w1[11:10] % w2)[17] <<= 1
+
+        with self.assertRaises(ParseException):
+            w1[11][1] <<= 1
+        w1[11][0] <<= 1
+        w1[11][2] <<= 1
 
 
 @unittest.skip("XXX")

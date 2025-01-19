@@ -222,6 +222,9 @@ class Concat(TestBase):
         with self.assertRaises(ParseException):
             w1 % wire(5).array(10)
 
+        with self.assertRaises(ParseException):
+            (w1 % 5)[1][1]
+
 
 class Arithmetic(TestBase):
 

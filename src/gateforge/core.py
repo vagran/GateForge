@@ -577,6 +577,24 @@ class Dimensions:
         return True
 
 
+    def GetVectorBitIndex(self, index: int) -> Tuple[int,...]:
+        """_summary_
+
+        :param index: Zero-based linear index of vector bit.
+        :return: Multidimensional index of vector bit.
+        """
+        assert self.packed is not None
+        result: List[int] = list()
+        for dim in reversed(self.packed):
+            size = abs(dim[1])
+            idx = index % size
+            index //= size
+            result.append(Dimensions.GetIndex(dim, idx))
+        if index != 0:
+            raise Exception(f"Index out of range: {index}")
+        return tuple(reversed(result))
+
+
     def __len__(self) -> int:
         dim = self._GetOutermostDimension()
         return abs(dim[1])
@@ -773,7 +791,7 @@ class Expression(SyntaxNode):
 
     def __getitem__(self, index: "int | bool | slice | Expression") -> "SliceExpr":
         if self.dims is None:
-            raise ParseException(f"Attempting slice dimensionless expression: {self}")
+            raise ParseException(f"Attempting to slice dimensionless expression: {self}")
         return SliceExpr(self, index, 1)
 
 
@@ -1606,20 +1624,28 @@ class ConcatExpr(Expression):
         yield from self.args
 
 
-    #XXX
-    def _Assign(self, bitIndex: Optional[int], frameDepth: int):
+    def _Assign(self, bitIndex: Optional[Tuple[int,...]], frameDepth: int):
         if bitIndex is None:
             for arg in self.args:
                 arg._Assign(None, frameDepth + 1)
-        else:
-            index = 0
-            for arg in reversed(self.args):
-                if arg.size is None or bitIndex < index + arg.size:
-                    assert bitIndex >= index
-                    arg._Assign(bitIndex - index, frameDepth + 1)
-                    return
-                index += arg.size
-            raise Exception(f"Assignment index out of range: {bitIndex}")
+            return
+
+        if len(bitIndex) != 1:
+            raise ParseException("Expected single dimension for concatenation assignment")
+
+        bitIdx = bitIndex[0]
+        argBaseIdx = 0
+        for arg in reversed(self.args):
+            if bitIdx < argBaseIdx + arg.vectorSize:
+                assert bitIdx >= argBaseIdx
+                if arg.dims is None:
+                    # Assign the only bit
+                    arg._Assign((0,), frameDepth + 1)
+                else:
+                    arg._Assign(arg.dims.GetVectorBitIndex(bitIdx - argBaseIdx), frameDepth + 1)
+                return
+            argBaseIdx += arg.vectorSize
+        raise Exception(f"Assignment index out of range: {bitIndex} >= {self.vectorSize}")
 
 
     def Render(self, ctx: RenderCtx):
