@@ -312,17 +312,24 @@ class Replication(TestBase):
             w1.array(5).replicate(3)
 
 
-@unittest.skip("XXX")
 class Conditional(TestBase):
     def test_basic(self):
         w1 = wire("w1")
-        w2 = wire(8, "w2")
+        w2 = wire("w2", 8)
         w3 = wire("w3")
         w4 = wire("w4")
         self.CheckExpr((w1 == w2[0]).cond(w3, w4), "(w1 == w2[0]) ? w3 : w4")
         self.CheckExpr(cond(w1 == w2[0], w3, w4), "(w1 == w2[0]) ? w3 : w4")
         self.CheckExpr(((w1 == w2[0]).cond(w3, w4)).cond(w1, w2.cond(w3, w4)),
                        "((w1 == w2[0]) ? w3 : w4) ? w1 : (w2 ? w3 : w4)")
+
+        with self.assertRaises(ParseException):
+            cond(w1, wire(2).array(3), wire(3).array(3))
+
+        self.CheckExpr(w1.cond(wire("a", 2).array(3), wire("b", 2).array(3)),
+                       "w1 ? a : b")
+
+        self.assertEqual(w1.cond(wire(5, 2), wire(6, 3)).vectorSize, 18)
 
         with self.assertRaises(ParseException):
             cond("a", w1, w2)

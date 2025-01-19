@@ -585,13 +585,13 @@ class Dimensions:
         s = ""
         if self.packed is not None:
             for dim in self.packed:
-                s += f"[{abs(dim[1])}({Dimensions.StrDimension(dim)})]"
+                s += f"[{abs(dim[1])} as {Dimensions.StrDimension(dim)}]"
         if len(s) > 0:
             s += " "
         s += "$" if name is None else name
         if self.unpacked is not None:
             for dim in self.unpacked:
-                s += f"[{abs(dim[1])}({Dimensions.StrDimension(dim)})]"
+                s += f"[{abs(dim[1])} as {Dimensions.StrDimension(dim)}]"
         return s
 
 
@@ -1807,13 +1807,19 @@ class ConditionalExpr(Expression):
         self.condition = Expression._CheckType(condition)
         self.ifCase = Expression._FromRaw(ifCase, frameDepth + 1)
         self.elseCase = Expression._FromRaw(elseCase, frameDepth + 1)
-        if not Dimensions.MatchAny(self.ifCase.dims, self.elseCase.dims, True):
-            raise ParseException(
-                "Arrays of different shape in conditional expression: "
-                f"{Dimensions.StrAny(self.ifCase.dims)} <=> {Dimensions.StrAny(self.elseCase.dims)}")
-        #XXX
-        # if self.ifCase.size is not None and self.elseCase.size is not None:
-        #     self.size = self.ifCase.size if self.ifCase.size >= self.elseCase.size else self.elseCase.size
+        if self.ifCase.isArray or self.elseCase.isArray:
+            if not Dimensions.MatchAny(self.ifCase.dims, self.elseCase.dims):
+                raise ParseException(
+                    "Arrays of different shape in conditional expression: "
+                    f"{Dimensions.StrAny(self.ifCase.dims)} <=> {Dimensions.StrAny(self.elseCase.dims)}")
+            self.dims = self.ifCase.dims
+        else:
+            if Dimensions.MatchAny(self.ifCase.dims, self.elseCase.dims):
+                self.dims = self.ifCase.dims
+            else:
+                # For different shapes make single dimension with max vector size.
+                size = max(self.ifCase.vectorSize, self.elseCase.vectorSize)
+                self.dims = Dimensions(((0, size), ), None)
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
