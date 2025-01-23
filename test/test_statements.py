@@ -1,10 +1,12 @@
 import io
 from pathlib import Path
+from typing import Sequence
 import unittest
 
 from gateforge.core import CompileCtx, ParseException, RenderCtx
 from gateforge.dsl import _case, _default, _else, _elseif, _if, _when, always, always_comb, \
     always_ff, always_latch, const, initial, module, namespace, parameter, reg, wire
+from test.utils import WarningTracker
 
 
 class TestBase(unittest.TestCase):
@@ -13,13 +15,14 @@ class TestBase(unittest.TestCase):
         self.compileCtx = CompileCtx("test")
         CompileCtx.Open(self.compileCtx, 0)
         self.ctx = RenderCtx()
+        self.wt = WarningTracker(self, self.compileCtx)
 
 
     def tearDown(self):
         CompileCtx.Close()
 
 
-    def CheckResult(self, expected: str, expectedWarnings = 0):
+    def CheckResult(self, expected: str, expectedWarnings:int | str | Sequence[str] = 0):
         stmt = self.compileCtx.curBlock._statements[-1]
         # Check source is in current file
         self.assertEqual(Path(stmt.srcFrame.filename).name, "test_statements.py")
@@ -27,7 +30,7 @@ class TestBase(unittest.TestCase):
             stmt.Render(self.ctx.CreateNested(output))
             result = output.getvalue()
         self.assertEqual(result, expected)
-        self.assertEqual(len(self.compileCtx.GetWarnings()), expectedWarnings)
+        self.wt.Check(expectedWarnings)
 
 
     def CheckEmpty(self, expectedWarnings = 0):
@@ -271,7 +274,27 @@ class TestInPlaceOperators(TestBase):
 always @(posedge w) begin
     r <= r | 'h4;
 end
-""".strip())
+""".strip(), 1)
+
+
+    def test_comparison_size_warning(self):
+        w1 = wire("w1")
+        w2 = wire("w2", 8)
+        w3 = wire("w3")
+
+        w3 <<= w1 < w2
+
+        self.CheckResult("assign w3 = w1 < w2;", "Comparing operands of different size")
+
+
+    def test_arithmetic_size_warning(self):
+        w1 = wire("w1")
+        w2 = wire("w2", 8)
+        w3 = wire("w3", 8)
+
+        w3 <<= w1 + w2
+
+        self.CheckResult("assign w3 = w1 + w2;", "Arithmetic expression argument insufficient size")
 
 
 class ProceduralBlocks(TestBase):

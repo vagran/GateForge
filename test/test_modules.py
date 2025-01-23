@@ -1,21 +1,26 @@
 import io
+from typing import Sequence
 import unittest
 
 from gateforge.compiler import CompileModule, CompileModuleToString
 from gateforge.core import ParseException, RenderOptions
 from gateforge.dsl import namespace, reg, wire
+from test.utils import WarningTracker
 
 
 class TestBase(unittest.TestCase):
 
-    def CheckResult(self, moduleFunc, expected: str, expectedWarnings = 0,
+    def CheckResult(self, moduleFunc, expected: str,
+                    expectedWarnings: int | str | Sequence[str] = 0,
                     moduleName = None):
         output = io.StringIO()
         result = CompileModule(moduleFunc, output,
                                renderOptions=RenderOptions(prohibitUndeclaredNets=False),
                                moduleName=moduleName)
         self.assertEqual(output.getvalue(), expected)
-        self.assertEqual(len(result.warnings), expectedWarnings)
+
+        wt = WarningTracker(self, result=result)
+        wt.Check(expectedWarnings)
 
 
 class Test(TestBase):

@@ -1,9 +1,12 @@
 import io
+from typing import Sequence
 import unittest
 
 from gateforge.core import CompileCtx, Expression, ParseException, RenderCtx
 from gateforge.dsl import concat, cond, const, namespace, reg, wire
 from pathlib import Path
+
+from test.utils import WarningTracker
 
 
 class TestBase(unittest.TestCase):
@@ -12,20 +15,21 @@ class TestBase(unittest.TestCase):
         self.compileCtx = CompileCtx("test")
         CompileCtx.Open(self.compileCtx, 0)
         self.ctx = RenderCtx()
+        self.wt = WarningTracker(self, self.compileCtx)
 
 
     def tearDown(self):
         CompileCtx.Close()
 
 
-    def CheckExpr(self, expr: Expression, expected: str, expectedWarnings = 0):
+    def CheckExpr(self, expr: Expression, expected: str, expectedWarnings:int | str | Sequence[str] = 0):
         # Check source is in current file
         self.assertEqual(Path(expr.srcFrame.filename).name, "test_expressions.py")
         with io.StringIO() as output:
             expr.Render(self.ctx.CreateNested(output))
             result = output.getvalue()
         self.assertEqual(result, expected)
-        self.assertEqual(len(self.compileCtx.GetWarnings()), expectedWarnings)
+        self.wt.Check(expectedWarnings)
 
 
 class Const(TestBase):
@@ -285,7 +289,7 @@ class Comparison(TestBase):
         w4 = wire("w4")
 
         self.CheckExpr(w1 == w2, "w1 == w2")
-        self.CheckExpr(w1 == w2 | w3, "w1 == (w2 | w3)")
+        self.CheckExpr(w1 == w3 | w4, "w1 == (w3 | w4)")
         self.CheckExpr(w1 | w2 == w3 | w4, "(w1 | w2) == (w3 | w4)")
         self.CheckExpr(w1 | (w2 == w3) | w4, "w1 | (w2 == w3) | w4")
         # Keep in mind comparison operators chaining in Python, so parentheses are mandatory

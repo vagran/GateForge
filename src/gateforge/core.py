@@ -1770,6 +1770,18 @@ class ArithmeticExpr(Expression):
         self.dims = Dimensions(((0, size),), None)
 
 
+    def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
+        if not super()._Wire(isLhs, frameDepth + 1):
+            return False
+        ctx = CompileCtx.Current()
+        for e in self.args:
+            if e.vectorSize != self.vectorSize:
+                ctx.Warning(
+                    f"Arithmetic expression argument insufficient size: {e} size {e.vectorSize} "
+                    f"bits, required {self.vectorSize} bits", self.srcFrame)
+        return True
+
+
     def _ToSensitivityList(self, frameDepth: int) -> "SensitivityList":
         if self.op != "|":
             raise ParseException(f"Only `|` operation allowed for sensitivity list, has `{self.op}`")
