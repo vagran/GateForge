@@ -361,17 +361,25 @@ class SyntaxNode:
     srcFrame: traceback.FrameSummary
     # String value to use in diagnostic messages
     strValue: Optional[str] = None
-    indent: int
-    namespacePrefix: str
+    indent: int = 0
+    namespacePrefix: str = ""
+    # Can be instantiated outside compiling context
+    isVoidCtxAllowed = False
+    # Instantiated outside compiling context, never wired.
+    isVoidCtx = False
 
 
     def __init__(self, frameDepth: int):
-        # Raise exception if no context
-        ctx = CompileCtx.Current()
+        ctx = CompileCtx._GetCurrent()
+        if ctx is None:
+            if not self.isVoidCtxAllowed:
+                raise Exception("Synthesizable functions are not allowed to be called outside the compiler")
+            self.isVoidCtx = True
         self.srcFrame = self.GetFrame(frameDepth + 1)
-        ctx.lastFrame = self.srcFrame
-        self.indent = ctx.indent
-        self.namespacePrefix = ctx.namespacePrefix
+        if ctx is not None:
+            ctx.lastFrame = self.srcFrame
+            self.indent = ctx.indent
+            self.namespacePrefix = ctx.namespacePrefix
 
 
     @staticmethod
@@ -846,6 +854,8 @@ class Expression(SyntaxNode):
         Wire the expression.
         :return: True if wired, false if already was wired earlier.
         """
+        if self.isVoidCtx:
+            return True
         if self.nonWireableReason is not None:
             raise ParseException(f"Expression wiring prohibited: {self} - {self.nonWireableReason}")
         if isLhs and not self.isLhs:
@@ -1065,6 +1075,7 @@ RawExpression = Expression | int | bool
 
 
 class Const(Expression):
+    isVoidCtxAllowed = True
     dims: Dimensions
     # Minimal number of bits required to represent the value without trimming
     valueSize: int
@@ -1484,6 +1495,12 @@ class NetProxy(Net):
     def port(self) -> "Port":
         return Port(self, 1)
 
+    # Allow syntax like `wire("myPort").output.port <<= someExpression`
+    @port.setter
+    def port(self, value: "Port"):
+        if not isinstance(value, Port) or value.src is not self:
+            raise ParseException("Only `<<=` or `//=` statement can be used to assign port value")
+
 
 NetMarkerArgType = Type[Wire] | Type[Reg] | Tuple[Type[Wire] | Type[Reg],
                    int | Sequence[int]]
@@ -1521,15 +1538,6 @@ class OutputNet(Generic[TNet], NetProxy):
     def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]: # type: ignore
         # Make mypy think its Wire or Reg in user code.
         return NetMarkerType(netType, True) # type: ignore
-
-
-    # In-place assignment methods below are overridden to make type checked happy.
-    def __ilshift__(self, rhs: "RawExpression") -> "OutputNet":
-        return super().__ilshift__(rhs) # type: ignore
-
-
-    def __ifloordiv__(self, rhs: "RawExpression") -> "OutputNet":
-        return super().__ifloordiv__(rhs) # type: ignore
 
 
 class InputNet(Generic[TNet], NetProxy):
