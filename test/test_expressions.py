@@ -98,6 +98,11 @@ class Net(TestBase):
         self.CheckExpr(wire("w", [1, 3], (8, 6)).array((3, 1), [7, 3]), "wire[1:3][8:6] w[3:1][7:3]")
         self.CheckExpr(wire("w", [1, 3], (8, 6)).array(5, [3, 7]), "wire[1:3][8:6] w[4:0][3:7]")
 
+        self.assertTrue(wire((31, 2)).dims == [(31, 2)])
+        self.assertFalse(wire((31, 2)).dims == [(31, 3)])
+        self.assertTrue(wire((31, 2), 8).dims == [(31, 2), 8])
+        self.assertFalse(wire((31, 2), 8).dims == [(31, 2), 9])
+
         with namespace("TestNs"):
             w = wire("w", [3, 1])
         self.CheckExpr(w, "wire[3:1] TestNs_w")

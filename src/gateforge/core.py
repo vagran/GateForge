@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from io import TextIOBase
 import threading
-from typing import Any, Generator, Generic, Iterable, Iterator, List, Optional, Sequence, Tuple, \
-    Type, TypeVar
+from typing import Any, Generator, Generic, Iterable, Iterator, List, Optional, Self, Sequence, \
+    Tuple, Type, TypeVar
 import traceback
 import re
 import math
@@ -458,7 +458,7 @@ class Dimensions:
 
 
     @staticmethod
-    def Parse(packedDims: Optional[Sequence[int | Sequence[int] | int]],
+    def Parse(packedDims: Optional[Sequence[int | Sequence[int]] | int],
               unpackedDims: Optional[Sequence[int | Sequence[int]] | int]) -> "Dimensions":
         return Dimensions(Dimensions._Parse(packedDims), Dimensions._Parse(unpackedDims))
 
@@ -605,6 +605,13 @@ class Dimensions:
     def __len__(self) -> int:
         dim = self._GetOutermostDimension()
         return abs(dim[1])
+
+
+    def __eq__(self, other: "Dimensions | int | Sequence[int]") -> bool: # type: ignore
+        if isinstance(other, Dimensions):
+            return self.unpacked == other.unpacked and self.packed == other.packed
+        _other = Dimensions.Parse(other, None)
+        return self.unpacked == _other.unpacked and self.packed == _other.packed
 
 
     def Str(self, name: Optional[str] = None) -> str:
@@ -803,6 +810,12 @@ class Expression(SyntaxNode):
         return self.dims.isArray
 
 
+    # For allowing syntax `myNet: Expression[32]`, or `Net[(11, 8))]`
+    # Argument may be used in the future.
+    def __class_getitem__(cls, size: Sequence[int] | int) -> "Expression":
+        return cls # type: ignore
+
+
     def __getitem__(self, index: "int | bool | slice | Expression") -> "SliceExpr":
         if self.dims is None:
             raise ParseException(f"Attempting to slice dimensionless expression: {self}")
@@ -904,12 +917,12 @@ class Expression(SyntaxNode):
         return len(self.dims)
 
 
-    def __ilshift__(self, rhs: "RawExpression") -> "Expression":
+    def __ilshift__(self, rhs: "RawExpression") -> Self:
         AssignmentStatement(self, rhs, isBlocking=False, frameDepth=1)
         return self
 
 
-    def __ifloordiv__(self, rhs: "RawExpression") -> "Expression":
+    def __ifloordiv__(self, rhs: "RawExpression") -> Self:
         AssignmentStatement(self, rhs, isBlocking=True, frameDepth=1)
         return self
 
@@ -1503,8 +1516,9 @@ class OutputNet(Generic[TNet], NetProxy):
         super().__init__(src, True, frameDepth + 1)
 
 
+    #XXX revise, make uniform in Expression.__class_getitem__
     # For allowing syntax `myNet: OutputNet[Wire]`, or `OutputNet[Wire, 8]`
-    def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]:
+    def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]: # type: ignore
         # Make mypy think its Wire or Reg in user code.
         return NetMarkerType(netType, True) # type: ignore
 
@@ -1526,7 +1540,7 @@ class InputNet(Generic[TNet], NetProxy):
         super().__init__(src, False, frameDepth + 1)
 
 
-    def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]:
+    def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]: # type: ignore
         return NetMarkerType(netType, False) # type: ignore
 
 
