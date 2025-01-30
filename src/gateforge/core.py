@@ -2639,7 +2639,12 @@ class VerilatorLintOffStatement(Statement):
 
 
     def Render(self, ctx: RenderCtx):
+        isFirst = True
         for name in self.warnNames:
+            if isFirst:
+                isFirst = False
+            else:
+                ctx.WriteIndent(self.indent)
             ctx.Write(f"// verilator lint_off {name}\n")
         self.body.Render(ctx, -1)
         isFirst = True
@@ -2648,4 +2653,5 @@ class VerilatorLintOffStatement(Statement):
                 isFirst = False
             else:
                 ctx.Write("\n")
+            ctx.WriteIndent(self.indent)
             ctx.Write(f"// verilator lint_on {name}")
