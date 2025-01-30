@@ -5,7 +5,8 @@ import unittest
 
 from gateforge.core import CompileCtx, ParseException, RenderCtx
 from gateforge.dsl import _case, _default, _else, _elseif, _if, _when, always, always_comb, \
-    always_ff, always_latch, const, initial, module, namespace, parameter, reg, wire
+    always_ff, always_latch, const, initial, module, namespace, parameter, reg, \
+    verilator_lint_off, wire
 from test.utils import WarningTracker
 
 
@@ -235,6 +236,20 @@ class TestAssignments(TestBase):
             w1[11][1] <<= 1
         w1[11][0] <<= 1
         w1[11][2] <<= 1
+
+
+    def test_verilator_lint_off(self):
+        w1 = wire("w1", 2)
+        w2 = wire("w2")
+        with verilator_lint_off("WIDTH", "UNUSED"):
+            w1 <<= w2
+        self.CheckResult("""
+// verilator lint_off WIDTH
+// verilator lint_off UNUSED
+assign w1 = w2;
+// verilator lint_on UNUSED
+// verilator lint_on WIDTH
+""".strip(), 1)
 
 
 class TestInPlaceOperators(TestBase):

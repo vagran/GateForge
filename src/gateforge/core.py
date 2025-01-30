@@ -373,7 +373,8 @@ class SyntaxNode:
         ctx = CompileCtx._GetCurrent()
         if ctx is None:
             if not self.isVoidCtxAllowed:
-                raise Exception("Synthesizable functions are not allowed to be called outside the compiler")
+                raise Exception(
+                    "Synthesizable functions are not allowed to be called outside the compiler")
             self.isVoidCtx = True
         self.srcFrame = self.GetFrame(frameDepth + 1)
         if ctx is not None:
@@ -918,7 +919,10 @@ class Expression(SyntaxNode):
 
 
     def __bool__(self):
-        raise ParseException("Use of synthesizable expression in boolean context. Use bitwise operators and dedicated statements.")
+        raise ParseException(
+            "Use of synthesizable expression in boolean context. "
+            "Use bitwise operators and dedicated statements. "
+            "Use parenthesis when mixing bitwise and comparison operators.")
 
 
     def __len__(self) -> int:
@@ -2024,12 +2028,12 @@ class Block(SyntaxNode):
         return self._statements[-1]
 
 
-    def Render(self, ctx: RenderCtx):
+    def Render(self, ctx: RenderCtx, indentOffset = 0):
         for stmt in self._statements:
             if ctx.options.sourceMap:
-                ctx.WriteIndent(stmt.indent)
+                ctx.WriteIndent(stmt.indent + indentOffset)
                 ctx.Write(f"// {stmt.sourceMapEntry}\n")
-            ctx.WriteIndent(stmt.indent)
+            ctx.WriteIndent(stmt.indent + indentOffset)
             stmt.Render(ctx)
             ctx.Write("\n")
 
@@ -2606,3 +2610,42 @@ class Namespace(SyntaxNode):
     def __exit__(self, excType, excValue, tb):
         if CompileCtx.Current().PopNamespace() != self.name:
             raise Exception("Unexpected current namespace")
+
+
+class VerilatorLintOffStatement(Statement):
+    warnNames: Sequence[str]
+    body: Block
+
+
+    def __init__(self, warnNames: Sequence[str], frameDepth: int):
+        super().__init__(frameDepth + 1, deferPush=True)
+        self.warnNames = warnNames
+
+
+    def __enter__(self):
+        self.body = Block(1)
+        ctx = CompileCtx.Current()
+        ctx.PushBlock(self.body)
+
+
+    def __exit__(self, excType, excValue, tb):
+        ctx = CompileCtx.Current()
+        if ctx.PopBlock() is not self.body:
+            raise Exception("Unexpected current block")
+        if len(self.body) == 0:
+            ctx.Warning(f"Empty `verilator_lint_off` block", self.srcFrame)
+        else:
+            ctx.PushStatement(self)
+
+
+    def Render(self, ctx: RenderCtx):
+        for name in self.warnNames:
+            ctx.Write(f"// verilator lint_off {name}\n")
+        self.body.Render(ctx, -1)
+        isFirst = True
+        for name in reversed(self.warnNames):
+            if isFirst:
+                isFirst = False
+            else:
+                ctx.Write("\n")
+            ctx.Write(f"// verilator lint_on {name}")

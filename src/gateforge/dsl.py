@@ -2,7 +2,7 @@ from typing import List, Optional, Sequence, Type, cast
 from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConcatExpr, ConditionalExpr, \
     Const, Dimensions, Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, \
     Namespace, Net, NetProxy, ParseException, ProceduralBlock, Reg, SensitivityList, \
-    WhenStatement, Wire, RawExpression
+    VerilatorLintOffStatement, WhenStatement, Wire, RawExpression
 
 
 def const(value: str | int | bool, size: Optional[int] = None) -> Const:
@@ -157,3 +157,7 @@ def module(moduleName: str, *args: NetProxy | ModuleParameter) -> Module:
 
 def namespace(name: str) -> Namespace:
     return Namespace(name, 1)
+
+
+def verilator_lint_off(*warnNames: str) -> VerilatorLintOffStatement:
+    return VerilatorLintOffStatement(warnNames, 1)
