@@ -1719,8 +1719,19 @@ class SliceExpr(Expression):
 
     def _GetChildren(self) -> Iterator["Expression"]:
         yield self.arg
+        # Do not return index expression here since we do not want to apply default wiring and
+        # assignment tracking logic to it.
+
+
+    def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
+        """
+        Index expression should always be wired as RHS. So make this override.
+        """
+        if not super()._Wire(isLhs, frameDepth):
+            return False
         if isinstance(self.index, Expression):
-            yield self.index
+            self.index._Wire(False, frameDepth + 1)
+        return True
 
 
     def _Assign(self, bitIndex: Optional[Tuple[int,...]], frameDepth: int):

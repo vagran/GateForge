@@ -48,17 +48,17 @@ endmodule
         def TestModule():
             _in = reg("in", 8).input.port
             idx = reg("idx", 3).input.port
-            _out = wire("out").output.port
+            _out = wire("out", 8).output.port
 
-            _out <<= _in[idx]
+            _out[idx] <<= _in[idx]
 
         self.CheckResult(TestModule, """
 module TestModule(
     input reg[2:0] idx,
     input reg[7:0] in,
-    output wire out);
+    output wire[7:0] out);
 
-assign out = in[idx];
+assign out[idx] = in[idx];
 endmodule
 """.lstrip())
 
