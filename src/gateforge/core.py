@@ -1719,6 +1719,8 @@ class SliceExpr(Expression):
 
     def _GetChildren(self) -> Iterator["Expression"]:
         yield self.arg
+        if isinstance(self.index, Expression):
+            yield self.index
 
 
     def _Assign(self, bitIndex: Optional[Tuple[int,...]], frameDepth: int):
@@ -2385,14 +2387,14 @@ class ProceduralBlock(Statement):
 
 
     allowedScope = StatementScope.NON_PROCEDURAL
-    sensitivityList: Optional[SensitivityList]
+    sensitivityList: Optional[SensitivityList | EdgeTrigger]
     body: Block
     logicType: LogicType
 
 
 
-    def __init__(self, sensitivityList: Optional[SensitivityList], logicType=LogicType.NONE, *,
-                 frameDepth: int):
+    def __init__(self, sensitivityList: Optional[SensitivityList | EdgeTrigger],
+                 logicType=LogicType.NONE, *, frameDepth: int):
         super().__init__(frameDepth + 1, deferPush=True)
         self.sensitivityList = sensitivityList
         self.logicType = logicType

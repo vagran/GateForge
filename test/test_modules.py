@@ -43,6 +43,26 @@ endmodule
 """.lstrip())
 
 
+    def test_dynamic_slice_index_wiring(self):
+
+        def TestModule():
+            _in = reg("in", 8).input.port
+            idx = reg("idx", 3).input.port
+            _out = wire("out").output.port
+
+            _out <<= _in[idx]
+
+        self.CheckResult(TestModule, """
+module TestModule(
+    input reg[2:0] idx,
+    input reg[7:0] in,
+    output wire out);
+
+assign out = in[idx];
+endmodule
+""".lstrip())
+
+
     def test_namespace_ports(self):
 
         def TestModule():

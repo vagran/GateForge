@@ -1,6 +1,6 @@
 from typing import List, Optional, Sequence, Type, cast
 from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConcatExpr, ConditionalExpr, \
-    Const, Dimensions, Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, \
+    Const, Dimensions, EdgeTrigger, Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, \
     Namespace, Net, NetProxy, ParseException, ProceduralBlock, Reg, SensitivityList, \
     VerilatorLintOffStatement, WhenStatement, Wire, RawExpression
 
@@ -43,9 +43,9 @@ def concat(*items: RawExpression) -> ConcatExpr:
     return ConcatExpr(items, 1)
 
 
-def _CreateProceduralBlock(sensitivityList: SensitivityList | Net | ArithmeticExpr | None,
+def _CreateProceduralBlock(sensitivityList: SensitivityList | EdgeTrigger | Net | ArithmeticExpr | None,
                            logicType: ProceduralBlock.LogicType) -> ProceduralBlock:
-    sl: Optional[SensitivityList]
+    sl: Optional[SensitivityList | EdgeTrigger]
     if isinstance(sensitivityList, Net):
         sl = SensitivityList(1)
         sl.PushSignal(sensitivityList)
@@ -57,7 +57,8 @@ def _CreateProceduralBlock(sensitivityList: SensitivityList | Net | ArithmeticEx
     return ProceduralBlock(sl, logicType, frameDepth=2)
 
 
-def always(sensitivityList: SensitivityList | Net | ArithmeticExpr | None = None) -> ProceduralBlock:
+def always(sensitivityList: SensitivityList | EdgeTrigger | Net | ArithmeticExpr | None = None) -> \
+    ProceduralBlock:
     return _CreateProceduralBlock(sensitivityList, ProceduralBlock.LogicType.NONE)
 
 
