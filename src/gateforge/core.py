@@ -473,11 +473,15 @@ class Dimensions:
 
 
     @staticmethod
-    def ParseSlice(index: "int | bool | slice | Expression") -> "int | Tuple[int, int] | Expression":
+    def ParseSlice(index: "int | bool | slice | Expression",
+                   ctxDim: Optional["Dimensions"] = None) -> "int | Tuple[int, int] | Expression":
         """Parse slice argument.
 
         :return: Either slicing expression or (baseIndex, size) tuple.
         """
+
+        dim = ctxDim._GetOutermostDimension() if ctxDim is not None else None
+
         def CheckConst(index: Any) -> Optional[int]:
             if isinstance(index, int):
                 return index
@@ -490,21 +494,36 @@ class Dimensions:
         const = CheckConst(index)
         if const is not None:
             return const
+
         elif isinstance(index, slice):
+
             if index.step is not None:
                 raise ParseException(f"Slice cannot have step specified: {index}")
-            msb = CheckConst(index.start)
+
+            msb: int | None
+            if index.start is None and dim is not None:
+                msb = Dimensions.Msb(dim)
+            else:
+                msb = CheckConst(index.start)
             if msb is None:
                 raise ParseException(f"Slice MSB is not constant number: {index.start}")
-            lsb = CheckConst(index.stop)
+
+            lsb: int | None
+            if index.stop is None and dim is not None:
+                lsb = dim[0]
+            else:
+                lsb = CheckConst(index.stop)
             if lsb is None:
                 raise ParseException(f"Slice LSB is not constant number: {index.stop}")
+
             if msb >= lsb:
                 return (lsb, msb - lsb + 1)
             else:
                 return (lsb, msb - lsb - 1)
+
         elif isinstance(index, Expression):
             return index
+
         raise ParseException(f"Bad index type: {type(index).__name__}")
 
 
@@ -514,7 +533,7 @@ class Dimensions:
         :return: Reduced dimensions.
         """
 
-        slice = Dimensions.ParseSlice(index)
+        slice = Dimensions.ParseSlice(index, self)
 
         if isinstance(slice, tuple):
             dim = self._GetOutermostDimension()
@@ -649,15 +668,20 @@ class Dimensions:
 
 
     @staticmethod
-    def StrDimension(dim: Tuple[int, int], brackets: bool = True) -> str:
+    def Msb(dim: Tuple[int, int]) -> int:
         baseIndex, size = dim
         if size > 0:
-            if brackets:
-                return f"[{baseIndex + size - 1}:{baseIndex}]"
-            return f"{baseIndex + size - 1}:{baseIndex}"
+            return baseIndex + size - 1
+        return baseIndex + size + 1
+
+
+    @staticmethod
+    def StrDimension(dim: Tuple[int, int], brackets: bool = True) -> str:
+        baseIndex = dim[0]
+        msb = Dimensions.Msb(dim)
         if brackets:
-            return f"[{baseIndex + size + 1}:{baseIndex}]"
-        return f"{baseIndex + size + 1}:{baseIndex}"
+            return f"[{msb}:{baseIndex}]"
+        return f"{msb}:{baseIndex}"
 
 
     @staticmethod
@@ -1119,7 +1143,7 @@ class Const(Expression):
 
     def __getitem__(self, s):
         # Slicing is optimized to produce constant
-        slice = Dimensions.ParseSlice(s)
+        slice = Dimensions.ParseSlice(s, self.dims)
         if isinstance(slice, Expression):
             return SliceExpr(self, s, 1)
         if isinstance(slice, int):
@@ -1712,7 +1736,7 @@ class SliceExpr(Expression):
         self.arg = Expression._CheckType(arg)
         if self.arg.dims is None:
             raise Exception("Cannot slice dimensionless expression")
-        self.index = Dimensions.ParseSlice(index)
+        self.index = Dimensions.ParseSlice(index, self.arg.dims)
         self.dims = self.arg.dims.Slice(index)
         self.isLhs = self.arg.isLhs
 
