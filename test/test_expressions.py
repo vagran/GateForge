@@ -146,6 +146,13 @@ class Slice(TestBase):
         self.CheckExpr(const(0xde)[7:4][0], "1'h1")
         self.CheckExpr(const(0xde)[15:8], "8'h0")
 
+        # XXX Extended slices support
+        # self.CheckExpr(const(0xde)[7:], "8'hde")
+        # self.CheckExpr(const(0xde)[:0], "8'hde")
+        # self.CheckExpr(const(0xde)[:], "8'hde")
+        # self.CheckExpr(const(0xde)[:4], "8'hd")
+        # self.CheckExpr(const(0xde)[3:], "8'he")
+
         with self.assertRaises(ParseException):
             const(0xde)[7:4][4]
 

@@ -467,6 +467,13 @@ end
 """.strip())
 
 
+    def test_bool_cast_exception(self):
+        w = wire()
+        with self.assertRaises(ParseException):
+            if w:
+                pass
+
+
     def test_if_else_statement(self):
         r = reg("r", 8)
         w1 = wire("w1")
