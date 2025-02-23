@@ -1784,7 +1784,7 @@ class SliceExpr(Expression):
 
     def Render(self, ctx: RenderCtx):
         # Arithmetic expression cannot be sliced in Verilog, enclose in curly braces
-        self.arg.RenderNested(ctx, isinstance(self.arg, ArithmeticExpr))
+        self.arg.RenderNested(ctx, True)
         ctx.Write("[")
         if isinstance(self.index, int):
             ctx.Write(str(self.index))
