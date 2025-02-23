@@ -86,6 +86,15 @@ class SimulationModel:
         self._ctx = None
 
 
+    def Reload(self):
+        """
+        Reload context, resetting simulation state.
+        """
+        self._CheckCtx()
+        self._lib.Destruct(self._ctx)
+        self._ctx = self._lib.Construct()
+
+
     def Eval(self):
         self._CheckCtx()
         self._lib.Eval(self._ctx)
