@@ -37,7 +37,9 @@ class Bus(Generic[TBus]):
     def Adjacent(self):
         annotations = inspect.get_annotations(type(self))
         values = dict()
-        for name in annotations.keys():
+        for name, netCls in annotations.items():
+            if not Bus._IsNetMember(netCls):
+                continue
             value = getattr(self, name)
             if value.isOutput:
                 adj = value.src.input
@@ -85,9 +87,8 @@ class Bus(Generic[TBus]):
             raise Exception("Adjacent and default flags cannot be set simultaneously")
         annotations = inspect.get_annotations(type(self))
         for name, netCls in annotations.items():
-            if not isinstance(netCls, NetMarkerType):
-                raise ParseException(f"Bad type annotation for net `{name}`: `{netCls}`, "
-                                     "should be `NetMarkerType[Reg|Wire]`")
+            if not Bus._IsNetMember(netCls):
+                continue
             value: Net
             if name not in kwargs:
                 if _isDefault:
@@ -122,6 +123,11 @@ class Bus(Generic[TBus]):
         for name in kwargs.keys():
             if name not in annotations:
                 raise ParseException(f"Specified net `{name}` not present in tne bus class annotations")
+
+
+    @staticmethod
+    def _IsNetMember(annotation):
+        return isinstance(annotation, NetMarkerType)
 
 
 class Interface(Bus[TInterface]):

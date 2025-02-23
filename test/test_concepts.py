@@ -121,15 +121,6 @@ class TestBus(TestBase):
             SampleBus.Create(w=wire().input, r=reg().input, a=wire().input)
 
 
-    def test_bad_annotation(self) -> None:
-        class BadBus(Bus["BadBus"]):
-            w: Wire
-            r: Reg
-
-        with self.assertRaises(ParseException):
-            BadBus.Create(w=wire().input, r=reg().output)
-
-
     def test_bad_dir(self):
         with self.assertRaises(ParseException):
             SampleBus.Create(w=wire().input, r=reg().input)
