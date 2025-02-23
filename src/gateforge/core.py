@@ -1838,9 +1838,11 @@ class ArithmeticExpr(Expression):
             return False
         ctx = CompileCtx.Current()
         for e in self.args:
-            if e.vectorSize != self.vectorSize:
+            if (e.vectorSize != self.vectorSize and not e.isUnboundSize) or \
+                e.vectorSize > self.vectorSize:
+
                 ctx.Warning(
-                    f"Arithmetic expression argument insufficient size: {e} size {e.vectorSize} "
+                    f"Arithmetic expression argument size mismatch: {e} size {e.vectorSize} "
                     f"bits, required {self.vectorSize} bits", self.srcFrame)
         return True
 
@@ -2321,7 +2323,8 @@ class WhenStatement(Statement):
                     raise ParseException(
                         f"Case expression shape mismatch: {Dimensions.StrAny(self.switch.dims)} != "
                         f"{Dimensions.StrAny(e.dims)} ({e})")
-            elif e.vectorSize != self.switch.vectorSize:
+            elif (e.vectorSize != self.switch.vectorSize and not e.isUnboundSize) or \
+                e.vectorSize > self.switch.vectorSize:
                 ctx.Warning(f"'`_when` expression size mismatch: {self.switch.vectorSize} != {e.vectorSize} ({e})")
 
 

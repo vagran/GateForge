@@ -289,7 +289,7 @@ class TestInPlaceOperators(TestBase):
 always @(posedge w) begin
     r <= r | 'h4;
 end
-""".strip(), 1)
+""".strip())
 
 
     def test_comparison_size_warning(self):
@@ -309,7 +309,7 @@ end
 
         w3 <<= w1 + w2
 
-        self.CheckResult("assign w3 = w1 + w2;", "Arithmetic expression argument insufficient size")
+        self.CheckResult("assign w3 = w1 + w2;", "Arithmetic expression argument size mismatch")
 
 
 class ProceduralBlocks(TestBase):
