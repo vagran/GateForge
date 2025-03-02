@@ -1,6 +1,7 @@
+# mypy: disable-error-code="type-arg, valid-type"
 import unittest
 
-from gateforge.concepts import Bus, Interface
+from gateforge.concepts import Bus, ConstructNets, Interface
 from gateforge.core import CompileCtx, InputNet, OutputNet, ParseException, Port, Reg, RenderCtx, \
     Wire
 from gateforge.dsl import reg, wire
@@ -258,6 +259,38 @@ class TestInterface(TestBase):
         self.assertIsInstance(i.external.r.src, Reg)
         self.assertTrue(i.external.w.isOutput)
         self.assertFalse(i.external.r.isOutput)
+
+
+class MyComponent:
+    w1: Wire
+    w2: Wire[32]
+    w3: Wire[[31, 16]]
+    w4: Wire[4, [31, 16]]
+    r1: Reg[16].array(8)
+    r2: Reg[16].array(8, [15, 8])
+    r3: Reg
+
+
+class TestConstructNets(TestBase):
+
+    def test_basic(self):
+        comp = MyComponent()
+        r3 = reg()
+        comp.r3 = r3
+        ConstructNets(comp)
+        self.assertIs(comp.r3, r3)
+        self.assertIsInstance(comp.w1, Wire)
+        self.assertIsNone(comp.w1.dims)
+        self.assertIsInstance(comp.w2, Wire)
+        self.assertEqual(str(comp.w2.dims), "[32 as [31:0]] $")
+        self.assertIsInstance(comp.w3, Wire)
+        self.assertEqual(str(comp.w3.dims), "[16 as [31:16]] $")
+        self.assertIsInstance(comp.w4, Wire)
+        self.assertEqual(str(comp.w4.dims), "[4 as [3:0]][16 as [31:16]] $")
+        self.assertIsInstance(comp.r1, Reg)
+        self.assertEqual(str(comp.r1.dims), "[16 as [15:0]] $[8 as [7:0]]")
+        self.assertIsInstance(comp.r2, Reg)
+        self.assertEqual(str(comp.r2.dims), "[16 as [15:0]] $[8 as [7:0]][8 as [15:8]]")
 
 
 if __name__ == "__main__":

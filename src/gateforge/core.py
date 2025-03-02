@@ -763,7 +763,7 @@ class Dimensions:
         if isinstance(dims, int):
             if dims <= 0:
                 raise ParseException(f"Dimension size should be positive: {dims}")
-            return (((0, dims),))
+            return ((0, dims),)
 
         if dims is None or len(dims) == 0:
             return None
@@ -808,6 +808,36 @@ class Dimensions:
         return size
 
 
+# Holds information from annotated net members
+class TypeTag:
+    cls: Type
+    dims: Optional[Dimensions] = None
+
+
+    def __init__(self, cls: Type, dims: Optional[Dimensions]):
+        self.cls = cls
+        if dims is not None:
+            self.dims = dims
+
+
+    @staticmethod
+    def Create(cls: Type, dims: Sequence[int | Sequence[int]] | int) -> "TypeTag":
+        return TypeTag(cls, Dimensions.Parse(dims, None))
+
+
+    def array(self, *size: Sequence[int] | int):
+        return TypeTag(self.cls, Dimensions.MakeArray(self.dims, size))
+
+
+    @staticmethod
+    def CheckAnnotation(annotation: Any, allowedTypes: Sequence[Type]) -> "Optional[TypeTag]":
+        if isinstance(annotation, TypeTag):
+            return annotation
+        if annotation in allowedTypes:
+            return TypeTag(annotation, None)
+        return None
+
+
 class Expression(SyntaxNode):
     dims: Optional[Dimensions] = None
     # Single-dimensional vector can be of unbound size, e.g. unbound size constant or its
@@ -843,10 +873,11 @@ class Expression(SyntaxNode):
         return self.dims.isArray
 
 
-    # For allowing syntax `myNet: Expression[32]`, or `Net[(11, 8))]`
-    # Argument may be used in the future.
-    def __class_getitem__(cls, size: Sequence[int] | int) -> "Expression":
-        return cls # type: ignore
+    # For allowing syntax `myNet: Expression[32]`, or `Net[(11, 8)]`
+    def __class_getitem__(cls, size: Sequence[int | Sequence[int]] | int) -> TypeTag:
+        if not isinstance(size, tuple):
+            size = (size, ) # type: ignore
+        return TypeTag.Create(cls, size)
 
 
     def __getitem__(self, index: "int | bool | slice | Expression") -> "SliceExpr":
@@ -1530,10 +1561,12 @@ class NetProxy(Net):
             raise ParseException("Only `<<=` or `//=` statement can be used to assign port value")
 
 
+#XXX switch to TypeTag
 NetMarkerArgType = Type[Wire] | Type[Reg] | Tuple[Type[Wire] | Type[Reg],
                    int | Sequence[int]]
 
 
+# Used in buses and interfaces type annotations.
 class NetMarkerType:
     netType: Type[Wire] | Type[Reg]
     isOutput: bool

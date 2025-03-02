@@ -27,5 +27,8 @@
     ],
     "env": {
         "ossCadSuiteDir": "/opt/oss-cad-suite"
+    },
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportInvalidTypeForm": "none"
     }
 }

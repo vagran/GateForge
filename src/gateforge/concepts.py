@@ -1,8 +1,8 @@
 import inspect
-from typing import Generic, Type, TypeVar
+from typing import Any, Generic, Type, TypeVar
 
 from gateforge.core import Dimensions, Net, Port, RawExpression, NetMarkerType, NetProxy, \
-    ParseException, Reg
+    ParseException, Reg, TypeTag, Wire
 
 TBus = TypeVar("TBus", bound="Bus")
 TInterface = TypeVar("TInterface", bound="Interface")
@@ -161,3 +161,24 @@ class Interface(Bus[TInterface]):
         super()._Construct(_isDefault=True, **kwargs) # type: ignore
         self.internal = self # type: ignore
         self.external = self.Adjacent()
+
+
+def ConstructNets(obj: Any):
+    """Construct all non-initialized annotated Net class members in the specified object. Field name
+    is used as net name. Active namespaces affect names as usual.
+
+    :param obj: Object which has some members annotated with `Reg` or `Wire` types. They are
+    constructed if the object does not currently have such attribute. Size specification is taken
+    into account as well.
+    """
+
+    annotations = inspect.get_annotations(type(obj))
+    allowedTypes = [Wire, Reg]
+    for name, netCls in annotations.items():
+        tag = TypeTag.CheckAnnotation(netCls, allowedTypes)
+        if tag is None:
+            continue
+        if hasattr(obj, name):
+            continue
+        net = tag.cls(dims=tag.dims, isReg=tag.cls is Reg, name=name, frameDepth=1)
+        setattr(obj, name, net)
