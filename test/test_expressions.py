@@ -245,6 +245,19 @@ class Concat(TestBase):
             (w1 % 5)[1][1]
 
 
+class Shift(TestBase):
+
+    def test_basic(self):
+        w1 = wire("w1")
+        w2 = wire("w2", 8)
+        w3 = wire("w3")
+        w4 = wire("w4")
+
+        self.CheckExpr(w2.sll(2), "w2 << 'h2")
+        self.CheckExpr(w2.srl(2), "w2 >> 'h2")
+        self.CheckExpr(w2.sra(2), "w2 >>> 'h2")
+
+
 class Arithmetic(TestBase):
 
     def test_basic(self):

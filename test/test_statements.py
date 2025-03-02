@@ -252,6 +252,15 @@ assign w1 = w2;
 """.strip(), 1)
 
 
+    def test_shift_size_exceeding(self):
+        r = reg("r", 8)
+        w = wire("w", 8)
+        w <<= r.sll(9)
+        self.CheckResult("""
+assign w = r << 'h9;
+""".strip(), "Shift amount reaches expression size")
+
+
 class TestInPlaceOperators(TestBase):
 
     def test_add(self):

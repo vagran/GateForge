@@ -1130,6 +1130,18 @@ class Expression(SyntaxNode):
         return ConditionalExpr(self, ifCase, elseCase, 1)
 
 
+    def sll(self, rhs: "RawExpression") -> "ShiftExpr":
+        return ShiftExpr("<<", self, rhs, 1)
+
+
+    def srl(self, rhs: "RawExpression") -> "ShiftExpr":
+        return ShiftExpr(">>", self, rhs, 1)
+
+
+    def sra(self, rhs: "RawExpression") -> "ShiftExpr":
+        return ShiftExpr(">>>", self, rhs, 1)
+
+
 RawExpression = Expression | int | bool
 
 
@@ -1903,7 +1915,6 @@ class ComparisonExpr(Expression):
     rhs: Expression
     lhs: Expression
     needParentheses = True
-    size = 1
 
 
     def __init__(self, op: str, lhs: Expression, rhs: RawExpression, frameDepth: int):
@@ -1922,6 +1933,44 @@ class ComparisonExpr(Expression):
             CompileCtx.Current().Warning(
                 "Comparing operands of different size: "
                 f"{Dimensions.StrAny(self.lhs.dims, str(self.lhs))} <=> {Dimensions.StrAny(self.rhs.dims, str(self.rhs))}")
+
+        return True
+
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield self.lhs
+        yield self.rhs
+
+
+    def Render(self, ctx: RenderCtx):
+        self.lhs.RenderNested(ctx)
+        ctx.Write(f" {self.op} ")
+        self.rhs.RenderNested(ctx)
+
+
+class ShiftExpr(Expression):
+    op: str
+    rhs: Expression
+    lhs: Expression
+    needParentheses = True
+
+
+    def __init__(self, op: str, lhs: Expression, rhs: RawExpression, frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.strValue = f"Cmp({op})"
+        self.op = op
+        self.lhs = Expression._CheckType(lhs)
+        self.rhs = Expression._FromRaw(rhs, frameDepth + 1)
+        self.dims = self.lhs.dims
+
+
+    def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
+        if not super()._Wire(isLhs, frameDepth + 1):
+            return False
+
+        if isinstance(self.rhs, Const) and self.rhs.value >= self.lhs.vectorSize:
+            CompileCtx.Current().Warning(
+                f"Shift amount reaches expression size: {self.rhs.value} >= {self.lhs.vectorSize}")
 
         return True
 
