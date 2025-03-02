@@ -1561,26 +1561,17 @@ class NetProxy(Net):
             raise ParseException("Only `<<=` or `//=` statement can be used to assign port value")
 
 
-#XXX switch to TypeTag
-NetMarkerArgType = Type[Wire] | Type[Reg] | Tuple[Type[Wire] | Type[Reg],
-                   int | Sequence[int]]
-
-
-# Used in buses and interfaces type annotations.
-class NetMarkerType:
-    netType: Type[Wire] | Type[Reg]
+class InputOutputTypeTag(TypeTag):
     isOutput: bool
-    dims: Optional[Dimensions] = None
 
-
-    def __init__(self, netType: NetMarkerArgType, isOutput: bool):
-        if netType is Wire or netType is Reg:
-            self.netType = netType # type: ignore
+    @staticmethod
+    def Create(cls, netTypeAndSize: Any) -> "InputOutputTypeTag":
+        if isinstance(netTypeAndSize, tuple):
+            tag = InputOutputTypeTag(netTypeAndSize[0], Dimensions.Parse(netTypeAndSize[1:], None))
         else:
-            self.netType = netType[0] # type: ignore
-            self.dims = Dimensions.Parse((netType[1],), None) # type: ignore
-
-        self.isOutput = isOutput
+            tag = InputOutputTypeTag(netTypeAndSize, None)
+        tag.isOutput = cls.isOutput
+        return tag
 
 
 TNet = TypeVar("TNet", Wire, Reg)
@@ -1594,11 +1585,9 @@ class OutputNet(Generic[TNet], NetProxy):
         super().__init__(src, True, frameDepth + 1)
 
 
-    #XXX revise, make uniform in Expression.__class_getitem__
     # For allowing syntax `myNet: OutputNet[Wire]`, or `OutputNet[Wire, 8]`
-    def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]: # type: ignore
-        # Make mypy think its Wire or Reg in user code.
-        return NetMarkerType(netType, True) # type: ignore
+    def __class_getitem__(cls, netTypeAndSize: Any) -> TypeTag:
+        return InputOutputTypeTag.Create(cls, netTypeAndSize)
 
 
 class InputNet(Generic[TNet], NetProxy):
@@ -1609,8 +1598,9 @@ class InputNet(Generic[TNet], NetProxy):
         super().__init__(src, False, frameDepth + 1)
 
 
-    def __class_getitem__(cls, netType: NetMarkerArgType) -> Type[Wire] | Type[Reg]: # type: ignore
-        return NetMarkerType(netType, False) # type: ignore
+    # For allowing syntax `myNet: InputNet[Wire]`, or `InputNet[Wire, 8]`
+    def __class_getitem__(cls, netTypeAndSize: Any) -> TypeTag:
+        return InputOutputTypeTag.Create(cls, netTypeAndSize)
 
 
 class Port(Net):

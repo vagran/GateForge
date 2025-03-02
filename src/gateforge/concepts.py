@@ -1,7 +1,7 @@
 import inspect
 from typing import Any, Generic, Type, TypeVar
 
-from gateforge.core import Dimensions, Net, Port, RawExpression, NetMarkerType, NetProxy, \
+from gateforge.core import Dimensions, InputOutputTypeTag, Net, Port, RawExpression, NetProxy, \
     ParseException, Reg, TypeTag, Wire
 
 TBus = TypeVar("TBus", bound="Bus")
@@ -86,15 +86,15 @@ class Bus(Generic[TBus]):
         if _isAdjacent and _isDefault:
             raise Exception("Adjacent and default flags cannot be set simultaneously")
         annotations = inspect.get_annotations(type(self))
-        for name, netCls in annotations.items():
-            if not Bus._IsNetMember(netCls):
+        for name, tag in annotations.items():
+            if not Bus._IsNetMember(tag):
                 continue
             value: Net
             if name not in kwargs:
                 if _isDefault:
-                    net = netCls.netType(dims=netCls.dims,
-                                         isReg=netCls is Reg, name=name, frameDepth=_frameDepth + 1)
-                    value = net.output if netCls.isOutput else net.input
+                    net = tag.cls(dims=tag.dims,
+                                  isReg=tag.cls is Reg, name=name, frameDepth=_frameDepth + 1)
+                    value = net.output if tag.isOutput else net.input
                     setattr(self, name, value)
                     continue
                 raise ParseException(f"Bus net `{name}` has not been specified")
@@ -104,18 +104,18 @@ class Bus(Generic[TBus]):
             if not isinstance(value, NetProxy):
                 raise ParseException(
                     f"`NetProxy` or `Port` instance expected for net `{name}`, has `{type(value).__name__}")
-            if netCls.netType is not Reg and value.isReg:
+            if tag.cls is not Reg and value.isReg:
                 raise ParseException(f"Expected `Wire` for net `{name}`, has `Reg`")
-            if netCls.netType is Reg and not value.isReg:
+            if tag.cls is Reg and not value.isReg:
                 raise ParseException(f"Expected `Reg` for net `{name}`, has `Wire`")
-            if not _isAdjacent and netCls.isOutput != value.isOutput:
+            if not _isAdjacent and tag.isOutput != value.isOutput:
                 raise ParseException(f"Net `{name}` direction mismatch")
-            if _isAdjacent and netCls.isOutput == value.isOutput:
+            if _isAdjacent and tag.isOutput == value.isOutput:
                 raise Exception(f"Unexpected adjacent direction for net `{name}`")
-            if netCls.dims is not None and not Dimensions.MatchAny(netCls.dims, value.dims):
+            if tag.dims is not None and not Dimensions.MatchAny(tag.dims, value.dims):
                 raise ParseException(
                     f"Unexpected shape for net `{name}`: "
-                    f"{Dimensions.StrAny(value.dims)} != {Dimensions.StrAny(netCls.dims)}")
+                    f"{Dimensions.StrAny(value.dims)} != {Dimensions.StrAny(tag.dims)}")
             setattr(self, name, value)
             if value.initialName is None:
                 value.SetName(f"{name}")
@@ -127,7 +127,7 @@ class Bus(Generic[TBus]):
 
     @staticmethod
     def _IsNetMember(annotation):
-        return isinstance(annotation, NetMarkerType)
+        return isinstance(annotation, InputOutputTypeTag)
 
 
 class Interface(Bus[TInterface]):
