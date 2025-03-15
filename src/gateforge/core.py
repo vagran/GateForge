@@ -527,6 +527,11 @@ class Dimensions:
         raise ParseException(f"Bad index type: {type(index).__name__}")
 
 
+    @staticmethod
+    def Vector(size: int) -> "Dimensions":
+        return Dimensions(((0, size),), None)
+
+
     def Slice(self, index: "int | bool | slice | Expression") -> Optional["Dimensions"]:
         """Perform slicing of the dimensioned expression. Validate if possible (if constant
         expression supplied).
@@ -873,7 +878,7 @@ class Expression(SyntaxNode):
         return self.dims.isArray
 
 
-    # For allowing syntax `myNet: Expression[32]`, or `Net[(11, 8)]`
+    # For allowing syntax `myNet: Expression[32]`, or `Net[[11, 8]]`
     def __class_getitem__(cls, size: Sequence[int | Sequence[int]] | int) -> TypeTag:
         if not isinstance(size, tuple):
             size = (size, ) # type: ignore
@@ -1142,6 +1147,11 @@ class Expression(SyntaxNode):
         return ShiftExpr(">>>", self, rhs, 1)
 
 
+    @property
+    def signed(self) -> "FunctionCallExpr":
+        return FunctionCallExpr("$signed", [self], self.dims, 1)
+
+
 RawExpression = Expression | int | bool
 
 
@@ -1174,7 +1184,7 @@ class Const(Expression):
         if size is None:
             size = self.valueSize
             self.isUnboundSize = True
-        self.dims = Dimensions(((0, size),), None)
+        self.dims = Dimensions.Vector(size)
 
         if not self.isUnboundSize and self.valueSize > len(self.dims):
             raise ParseException(
@@ -1716,7 +1726,7 @@ class ConcatExpr(Expression):
             if not e.isLhs:
                 isLhs = False
 
-        self.dims = Dimensions(((0, size),), None)
+        self.dims = Dimensions.Vector(size)
         self.isLhs = isLhs
 
 
@@ -1865,7 +1875,7 @@ class ArithmeticExpr(Expression):
                 raise ParseException(f"Unpacked array is not supported in arithmetic expression: {e}")
             if e.vectorSize > size:
                 size = e.vectorSize
-        self.dims = Dimensions(((0, size),), None)
+        self.dims = Dimensions.Vector(size)
 
 
     def _Wire(self, isLhs: bool, frameDepth: int) -> bool:
@@ -2016,7 +2026,7 @@ class ReductionOperator(UnaryOperator):
         self.strValue = f"Reduce({op})"
         if self.arg.isArray:
             raise ParseException("Reduction operator cannot be applied to unpacked array")
-        self.dims = Dimensions(((0, 1),), None)
+        self.dims = Dimensions.Vector(1)
         if self.arg.vectorSize == 1:
             CompileCtx.Current().Warning(f"Reduction operator applied to 1 bit argument {arg}",
                                          self.srcFrame)
@@ -2035,7 +2045,7 @@ class ReplicationOperator(Expression):
             raise ParseException("Replication operator cannot be applied to unpacked array")
         if self.arg.isUnboundSize:
             raise ParseException(f"Replication operand should have size bound: {arg}")
-        self.dims = Dimensions(((0, self.arg.vectorSize * count),), None)
+        self.dims = Dimensions.Vector(self.arg.vectorSize * count)
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
@@ -2075,7 +2085,7 @@ class ConditionalExpr(Expression):
             else:
                 # For different shapes make single dimension with max vector size.
                 size = max(self.ifCase.vectorSize, self.elseCase.vectorSize)
-                self.dims = Dimensions(((0, size), ), None)
+                self.dims = Dimensions.Vector(size)
 
 
     def _GetChildren(self) -> Iterator["Expression"]:
@@ -2090,6 +2100,37 @@ class ConditionalExpr(Expression):
         self.ifCase.RenderNested(ctx)
         ctx.Write(" : ")
         self.elseCase.RenderNested(ctx)
+
+
+class FunctionCallExpr(Expression):
+    funcName: str
+    args: List[Expression]
+
+
+    def __init__(self, funcName: str, args: Iterable[RawExpression], dims: Optional[Dimensions],
+                 frameDepth: int):
+        super().__init__(frameDepth + 1)
+        self.funcName = funcName
+        self.strValue = f"{funcName}()"
+        self.args = [Expression._FromRaw(e, frameDepth + 1) for e in args]
+        self.dims = dims
+
+
+    def _GetChildren(self) -> Iterator["Expression"]:
+        yield from self.args
+
+
+    def Render(self, ctx: RenderCtx):
+        ctx.Write(self.funcName)
+        ctx.Write("(")
+        isFirst = True
+        for e in self.args:
+            if isFirst:
+                isFirst = False
+            else:
+                ctx.Write(", ")
+            e.Render(ctx)
+        ctx.Write(")")
 
 
 class StatementScope(Enum):

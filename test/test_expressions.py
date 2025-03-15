@@ -350,6 +350,13 @@ class Replication(TestBase):
             w1.array(5).replicate(3)
 
 
+
+class FunctionCall(TestBase):
+    def test_basic(self):
+        w1 = wire("w1")
+        self.CheckExpr(w1.signed, "$signed(w1)")
+
+
 class Conditional(TestBase):
     def test_basic(self):
         w1 = wire("w1")
