@@ -3,7 +3,7 @@ from typing import Sequence
 import unittest
 
 from gateforge.core import CompileCtx, Expression, ParseException, RenderCtx
-from gateforge.dsl import concat, cond, const, namespace, reg, wire
+from gateforge.dsl import call, concat, cond, const, namespace, reg, wire
 from pathlib import Path
 
 from test.utils import WarningTracker
@@ -354,7 +354,9 @@ class Replication(TestBase):
 class FunctionCall(TestBase):
     def test_basic(self):
         w1 = wire("w1")
+        w2 = wire("w2")
         self.CheckExpr(w1.signed, "$signed(w1)")
+        self.CheckExpr(call("someFunc", w1, w2, 2), "someFunc(w1, w2, 'h2)")
 
 
 class Conditional(TestBase):

@@ -1,8 +1,9 @@
 from typing import List, Optional, Sequence, Type, cast
 from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConcatExpr, ConditionalExpr, \
-    Const, Dimensions, EdgeTrigger, Expression, IfContext, IfStatement, InitialBlock, Module, ModuleParameter, \
-    Namespace, Net, NetProxy, ParseException, ProceduralBlock, Reg, SensitivityList, \
-    VerilatorLintOffStatement, WhenStatement, Wire, RawExpression
+    Const, Dimensions, EdgeTrigger, Expression, FunctionCallExpr, IfContext, IfStatement, \
+    InitialBlock, Module, ModuleParameter, Namespace, Net, NetProxy, ParseException, \
+    ProceduralBlock, Reg, SensitivityList, VerilatorLintOffStatement, WhenStatement, Wire, \
+    RawExpression
 
 
 def const(value: str | int | bool, size: Optional[int] = None) -> Const:
@@ -162,3 +163,7 @@ def namespace(name: str) -> Namespace:
 
 def verilator_lint_off(*warnNames: str) -> VerilatorLintOffStatement:
     return VerilatorLintOffStatement(warnNames, 1)
+
+
+def call(funcName: str, *args: RawExpression, dims: Optional[Dimensions] = None) -> FunctionCallExpr:
+    return FunctionCallExpr(funcName, args, dims, 1)
