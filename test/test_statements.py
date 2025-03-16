@@ -4,8 +4,8 @@ from typing import Sequence
 import unittest
 
 from gateforge.core import CompileCtx, ParseException, RenderCtx
-from gateforge.dsl import _case, _default, _else, _elseif, _if, _when, always, always_comb, \
-    always_ff, always_latch, const, initial, module, namespace, parameter, reg, \
+from gateforge.dsl import _case, _default, _else, _elseif, _if, _when, _whenx, _whenz, always, \
+    always_comb, always_ff, always_latch, const, initial, module, namespace, parameter, reg, \
     verilator_lint_off, wire
 from test.utils import WarningTracker
 
@@ -647,6 +647,69 @@ always @* begin
     endcase
 end
 """.strip())
+
+
+    def test_whenz_statement(self):
+        r = reg("r", 8)
+        w1 = wire("w1")
+        w2 = wire("w2")
+
+        with always():
+            with _whenz(r):
+                with _case(w1 % w2 % const(0, 6)):
+                    r <<= 1
+                with _case(w1 % const(0, 7)):
+                    r <<= 2
+                with _default():
+                    r <<= 3
+
+        self.CheckResult("""
+always @* begin
+    casez (r)
+        {w1, w2, 6'h0}: begin
+            r <= 'h1;
+        end
+        {w1, 7'h0}: begin
+            r <= 'h2;
+        end
+        default: begin
+            r <= 'h3;
+        end
+    endcase
+end
+""".strip())
+
+
+    def test_whenx_statement(self):
+        r = reg("r", 8)
+        w1 = wire("w1")
+        w2 = wire("w2")
+
+        with always():
+            with _whenx(r):
+                with _case(w1 % w2 % const(0, 6)):
+                    r <<= 1
+                with _case(w1 % const(0, 7)):
+                    r <<= 2
+                with _default():
+                    r <<= 3
+
+        self.CheckResult("""
+always @* begin
+    casex (r)
+        {w1, w2, 6'h0}: begin
+            r <= 'h1;
+        end
+        {w1, 7'h0}: begin
+            r <= 'h2;
+        end
+        default: begin
+            r <= 'h3;
+        end
+    endcase
+end
+""".strip())
+
 
 
     def test_when_case_size_mismatch(self):

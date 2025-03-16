@@ -2455,6 +2455,8 @@ class CaseContext:
 
 class WhenStatement(Statement):
     allowedScope = StatementScope.PROCEDURAL
+    # "z" or "x" for `casez` or `casex`
+    flavour: Optional[str] = None
     switch: Expression
     conditions: List[Expression]
     blocks: List[Block]
@@ -2463,11 +2465,15 @@ class WhenStatement(Statement):
     dummyBlock: Block
 
 
-    def __init__(self, switch: Expression, frameDepth):
+    def __init__(self, flavour: Optional[str], switch: Expression, frameDepth):
         super().__init__(frameDepth + 1)
         compileCtx = CompileCtx.Current()
         if not compileCtx.isProceduralBlock:
             raise ParseException("`when` statement can only be used in a procedural block")
+        if flavour is not None:
+            if flavour != "z" and flavour != "x":
+                raise Exception(f"Bad flavour: {flavour}")
+            self.flavour = flavour
         self.switch = Expression._CheckType(switch)
         self.conditions = list()
         self.blocks = list()
@@ -2498,7 +2504,8 @@ class WhenStatement(Statement):
 
     def Render(self, ctx: RenderCtx):
         assert len(self.conditions) == len(self.blocks)
-        ctx.Write("case (")
+        flavour = self.flavour if self.flavour is not None else ""
+        ctx.Write(f"case{flavour} (")
         self.switch.Render(ctx)
         ctx.Write(")\n")
 

@@ -104,7 +104,15 @@ def _else() -> IfContext:
 
 
 def _when(switch: Expression) -> WhenStatement:
-    return WhenStatement(switch, 1)
+    return WhenStatement(None, switch, 1)
+
+
+def _whenz(switch: Expression) -> WhenStatement:
+    return WhenStatement("z", switch, 1)
+
+
+def _whenx(switch: Expression) -> WhenStatement:
+    return WhenStatement("x", switch, 1)
 
 
 def _case(condition: RawExpression) -> CaseContext:
