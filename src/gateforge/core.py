@@ -1162,17 +1162,23 @@ class Const(Expression):
     valueSize: int
     # Constant value
     value: int
+    # 'z' bits in a value
+    zMask: int = 0
+    # 'x' bits in a value
+    xMask: int = 0
 
-    _valuePat = re.compile(r"(?:(-)?(\d+)?'([bdoh]))?([\da-f_]+)", re.RegexFlag.IGNORECASE)
+    _valuePat = re.compile(r"(?:(-)?(\d+)?'([bdoh]))?([\da-f_zx]+)", re.RegexFlag.IGNORECASE)
 
 
     def __init__(self, value: str | int | bool, size: Optional[int] = None, *, frameDepth: int):
         super().__init__(frameDepth + 1)
 
+        zMask = 0
+        xMask = 0
         if isinstance(value, str):
             if size is not None:
                 raise ParseException("Size should not be specified for string value")
-            self.value, size = Const._ParseStringValue(value)
+            self.value, zMask, xMask, size = Const._ParseStringValue(value)
         elif isinstance(value, bool):
             self.value = 1 if value else 0
             size = 1
@@ -1180,6 +1186,18 @@ class Const(Expression):
             self.value = value
 
         self.valueSize = Const.GetMinValueBits(self.value)
+
+        if zMask != 0:
+            self.zMask = zMask
+            maskSize = Const._GetMsbIndex(self.zMask) + 1
+            if maskSize > self.valueSize:
+                self.valueSize = maskSize
+
+        if xMask != 0:
+            self.xMask = xMask
+            maskSize = Const._GetMsbIndex(self.xMask) + 1
+            if maskSize > self.valueSize:
+                self.valueSize = maskSize
 
         if size is None:
             size = self.valueSize
@@ -1214,7 +1232,21 @@ class Const(Expression):
 
 
     def Render(self, ctx: RenderCtx):
-        ctx.Write(f"{'-' if self.value < 0 else ''}{'' if self.isUnboundSize else len(self.dims)}'h{abs(self.value):x}")
+        if self.zMask == 0 and self.xMask == 0:
+            ctx.Write(f"{'-' if self.value < 0 else ''}{'' if self.isUnboundSize else len(self.dims)}'h{abs(self.value):x}")
+        else:
+            # Render binary form
+            ctx.Write(f"{'-' if self.value < 0 else ''}{'' if self.isUnboundSize else len(self.dims)}'b")
+            for i in range(self.valueSize - 1, -1, -1):
+                mask = 1 << i
+                if self.zMask & mask != 0:
+                    ctx.Write("z")
+                elif self.xMask & mask != 0:
+                    ctx.Write("x")
+                elif self.value & mask != 0:
+                    ctx.Write("1")
+                else:
+                    ctx.Write("0")
 
 
     @staticmethod
@@ -1230,10 +1262,21 @@ class Const(Expression):
 
 
     @staticmethod
-    def _ParseStringValue(valueStr: str) -> Tuple[int, Optional[int]]:
+    def _GetMsbIndex(n):
+        if n == 0:
+            return None
+        index = 0
+        while n > 1:
+            n >>= 1
+            index += 1
+        return index
+
+
+    @staticmethod
+    def _ParseStringValue(valueStr: str) -> Tuple[int, int, int, Optional[int]]:
         """
         Parse Verilog constant literal.
-        :return: numeric value and optional size.
+        :return: numeric value, z-mask, x-mask and optional size.
         """
         m = Const._valuePat.fullmatch(valueStr)
         if m is None:
@@ -1264,15 +1307,67 @@ class Const(Expression):
             else:
                 raise Exception("Unhandled base char")
 
-        try:
-            value = int(groups[3], base)
-        except:
-            raise ParseException(f"Unable to parse value `{groups[3]}` with base {base}")
+        zMask = 0
+        xMask = 0
+
+        def GetDigit(c):
+            if c >= "0" and c <= "9":
+                return ord(c) - ord("0")
+            if c >= "a" and c <= "f":
+                return ord(c) - ord("a") + 10
+            raise ParseException(f"Bad digit in numeric literal: `{c}` in {groups[3]}")
+
+
+        numDigits = 0
+        value = 0
+        digitBits = int(math.log2(base))
+        leftmostDigit = None
+        for digit in groups[3].lower():
+            if digit == "_":
+                continue
+            if leftmostDigit is None:
+                leftmostDigit = digit
+            if digit != "z" and digit != "x":
+                digitValue = GetDigit(digit)
+                if digitValue >= base:
+                    raise ParseException(f"Bad digit in numeric literal: `{digit}` in {groups[3]} with base {base}")
+            if base == 10:
+                if digit == "z":
+                    raise ParseException(f"'z' not allowed in decimal numeric literal: {groups[3]}")
+                if digit == "x":
+                    raise ParseException(f"'x' not allowed in decimal numeric literal: {groups[3]}")
+                value = value * 10 + digitValue
+            else:
+                zMask <<= digitBits
+                xMask <<= digitBits
+                value <<= digitBits
+                if digit == "z":
+                    zMask |= (1 << digitBits) - 1
+                elif digit == "x":
+                    xMask |= (1 << digitBits) - 1
+                else:
+                    value |= digitValue
+            numDigits += 1
+
+        if numDigits == 0:
+            raise ParseException(f"Bad numeric literal, no digits: {groups[3]}")
 
         if groups[0] is not None:
             value = -value
 
-        return value, size
+        if size is not None and base != 10 and (leftmostDigit == "z" or leftmostDigit == "x"):
+            # Leftmost bits should be filled with `z` or `x` if explicitly specified size is greater
+            # than the specified value and leftmost digit is `z` or `x`
+            valueSize = numDigits * digitBits
+            if valueSize < size:
+                for i in range(valueSize, size):
+                    mask = 1 << i
+                    if leftmostDigit == "z":
+                        zMask |= mask
+                    else:
+                        xMask |= mask
+
+        return value, zMask, xMask, size
 
 
 class AssignmentTracker:
