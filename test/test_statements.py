@@ -4,9 +4,9 @@ from typing import Sequence
 import unittest
 
 from gateforge.core import CompileCtx, ParseException, RenderCtx
-from gateforge.dsl import _case, _default, _else, _elseif, _if, _when, _whenx, _whenz, always, \
-    always_comb, always_ff, always_latch, const, initial, module, namespace, parameter, reg, \
-    verilator_lint_off, wire
+from gateforge.dsl import _assert, _case, _default, _else, _elseif, _if, _when, _whenx, _whenz, \
+    always, always_comb, always_ff, always_latch, const, initial, module, namespace, parameter, \
+    reg, verilator_lint_off, wire
 from test.utils import WarningTracker
 
 
@@ -1048,6 +1048,23 @@ MyModule MyModule_0(
             module("MyModule",
                 wire("a").input,
                 wire("b").output)
+
+
+    def test_assert(self):
+        r = reg("r", 8)
+        with always():
+            _assert(r == 0)
+        self.CheckResult("""
+always @* begin
+    `ASSERT(r == 'h0)
+end
+""".strip(), 1)
+
+
+    def test_assert_not_in_procedural_block(self):
+        r = reg("r", 8)
+        with self.assertRaises(ParseException):
+            _assert(r == 0)
 
 
 if __name__ == "__main__":

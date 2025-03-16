@@ -1,7 +1,7 @@
 from typing import List, Optional, Sequence, Type, cast
-from gateforge.core import ArithmeticExpr, CaseContext, CompileCtx, ConcatExpr, ConditionalExpr, \
-    Const, Dimensions, EdgeTrigger, Expression, FunctionCallExpr, IfContext, IfStatement, \
-    InitialBlock, Module, ModuleParameter, Namespace, Net, NetProxy, ParseException, \
+from gateforge.core import ArithmeticExpr, AssertStatement, CaseContext, CompileCtx, ConcatExpr, \
+    ConditionalExpr, Const, Dimensions, EdgeTrigger, Expression, FunctionCallExpr, IfContext, \
+    IfStatement, InitialBlock, Module, ModuleParameter, Namespace, Net, NetProxy, ParseException, \
     ProceduralBlock, Reg, SensitivityList, VerilatorLintOffStatement, WhenStatement, Wire, \
     RawExpression
 
@@ -175,3 +175,7 @@ def verilator_lint_off(*warnNames: str) -> VerilatorLintOffStatement:
 
 def call(funcName: str, *args: RawExpression, dims: Optional[Dimensions] = None) -> FunctionCallExpr:
     return FunctionCallExpr(funcName, args, dims, 1)
+
+
+def _assert(condition: Expression) -> AssertStatement:
+    return AssertStatement(condition, 1)

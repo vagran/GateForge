@@ -8,6 +8,15 @@ from gateforge.dsl import namespace, reg, wire
 from test.utils import WarningTracker
 
 
+prologue = """`default_nettype none
+
+`define STRINGIFY(x) `"x`"
+`define ASSERT(__condition) \\
+    if (!(__condition)) begin \\
+        $fatal(1, "Assertion failed: %s", `STRINGIFY(__condition)); \\
+    end\n
+"""
+
 class TestBase(unittest.TestCase):
 
     def CheckResult(self, moduleFunc, expected: str,
@@ -15,9 +24,10 @@ class TestBase(unittest.TestCase):
                     moduleName = None):
         output = io.StringIO()
         result = CompileModule(moduleFunc, output,
-                               renderOptions=RenderOptions(prohibitUndeclaredNets=False),
+                               renderOptions=RenderOptions(),
                                moduleName=moduleName)
-        self.assertEqual(output.getvalue(), expected)
+
+        self.assertEqual(output.getvalue(), prologue + expected)
 
         wt = WarningTracker(self, result=result)
         wt.Check(expectedWarnings)

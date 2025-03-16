@@ -286,6 +286,14 @@ class CompileCtx:
         if renderOptions.prohibitUndeclaredNets:
             ctx.Write("`default_nettype none\n")
 
+        ctx.Write("""
+`define STRINGIFY(x) `"x`"
+`define ASSERT(__condition) \\
+    if (!(__condition)) begin \\
+        $fatal(1, "Assertion failed: %s", `STRINGIFY(__condition)); \\
+    end\n
+""")
+
         ctx.renderDecl = True
         self._RenderModuleDeclaration(ctx)
         self._RenderNetsDeclarations(ctx)
@@ -2385,9 +2393,6 @@ class IfStatement(Statement):
 
     def __init__(self, frameDepth):
         super().__init__(frameDepth + 1)
-        compileCtx = CompileCtx.Current()
-        if not compileCtx.isProceduralBlock:
-            raise ParseException("`if` statement can only be used in a procedural block")
         self.conditions = list()
         self.blocks = list()
 
@@ -2467,9 +2472,6 @@ class WhenStatement(Statement):
 
     def __init__(self, flavour: Optional[str], switch: Expression, frameDepth):
         super().__init__(frameDepth + 1)
-        compileCtx = CompileCtx.Current()
-        if not compileCtx.isProceduralBlock:
-            raise ParseException("`when` statement can only be used in a procedural block")
         if flavour is not None:
             if flavour != "z" and flavour != "x":
                 raise Exception(f"Bad flavour: {flavour}")
@@ -2908,3 +2910,20 @@ class VerilatorLintOffStatement(Statement):
                 ctx.Write("\n")
             ctx.WriteIndent(self.indent)
             ctx.Write(f"// verilator lint_on {name}")
+
+
+class AssertStatement(Statement):
+    allowedScope = StatementScope.PROCEDURAL
+    condition: Expression
+
+
+    def __init__(self, condition: Expression, frameDepth):
+        super().__init__(frameDepth + 1)
+        self.condition = Expression._CheckType(condition)
+        self.condition._Wire(False, frameDepth + 1)
+
+
+    def Render(self, ctx: RenderCtx):
+        ctx.Write("`ASSERT(")
+        self.condition.Render(ctx)
+        ctx.Write(")")
