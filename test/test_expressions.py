@@ -72,6 +72,7 @@ class Const(TestBase):
         self.CheckExpr(const(-1, 2), "-2'h1")
 
         self.CheckExpr(const("'hz1"), "'bzzzz0001")
+        self.CheckExpr(const("'h?1"), "'bzzzz0001")
         self.CheckExpr(const("16'h_x_z1"), "16'bxxxxxxxxzzzz0001")
         self.CheckExpr(const("'oz1"), "'bzzz001")
         self.CheckExpr(const("'bz1"), "'bz1")

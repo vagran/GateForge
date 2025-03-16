@@ -1167,7 +1167,7 @@ class Const(Expression):
     # 'x' bits in a value
     xMask: int = 0
 
-    _valuePat = re.compile(r"(?:(-)?(\d+)?'([bdoh]))?([\da-f_zx]+)", re.RegexFlag.IGNORECASE)
+    _valuePat = re.compile(r"(?:(-)?(\d+)?'([bdoh]))?([\da-f_zx\?]+)", re.RegexFlag.IGNORECASE)
 
 
     def __init__(self, value: str | int | bool, size: Optional[int] = None, *, frameDepth: int):
@@ -1327,21 +1327,19 @@ class Const(Expression):
                 continue
             if leftmostDigit is None:
                 leftmostDigit = digit
-            if digit != "z" and digit != "x":
+            if digit != "z" and digit != "x" and digit != "?":
                 digitValue = GetDigit(digit)
                 if digitValue >= base:
                     raise ParseException(f"Bad digit in numeric literal: `{digit}` in {groups[3]} with base {base}")
             if base == 10:
-                if digit == "z":
-                    raise ParseException(f"'z' not allowed in decimal numeric literal: {groups[3]}")
-                if digit == "x":
-                    raise ParseException(f"'x' not allowed in decimal numeric literal: {groups[3]}")
+                if digit == "z" or digit == "x" or digit == "?":
+                    raise ParseException(f"'{digit}' not allowed in decimal numeric literal: {groups[3]}")
                 value = value * 10 + digitValue
             else:
                 zMask <<= digitBits
                 xMask <<= digitBits
                 value <<= digitBits
-                if digit == "z":
+                if digit == "z" or digit == "?":
                     zMask |= (1 << digitBits) - 1
                 elif digit == "x":
                     xMask |= (1 << digitBits) - 1
