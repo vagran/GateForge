@@ -591,13 +591,14 @@ def TopModule():
     )
 ```
 
+
 ## Simulation-time assertion
 
  `_assert` statement exists to validate conditions in simulator. It is compiled to
  Verilog-compatible check which calls `$fatal` if condition evaluates to false.
 ```python
 with always_comb():
-	_assert(w1 == 42)
+    _assert(w1 == 42)
 ```
 
 
@@ -856,7 +857,7 @@ method of `.internal` and `.external` buses.
 
 ## Advanced example
 
-For more advanced example see RISC-V core example implementation. TODO add link
+For more advanced example see [RISC-V core example implementation](https://github.com/vagran/gateforge-riscv).
 
 
 ## License
