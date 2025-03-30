@@ -681,7 +681,7 @@ CompileModule(ParamModule,
 ## Verilator integration
 
 Providing `verilatorParams` argument for `CompileModule()` function enables simulation of the
-module. Here is complete example:
+module. Here is a complete example:
 ```python
 from pathlib import Path
 import unittest
@@ -735,8 +735,8 @@ Use `.OpenVcd()` and `.DumpVcd()` methods if waveform dump is needed.
 ## High-level helpers
 
 The above functionality is mostly one-to-one mapped to generated Verilog. It is up to the framework
-user how to organize the design at higher level using all the power of Python. However, several
-helpers are provided for typical tasks.
+user to decide how to organize the design at higher level using all the power of Python. However,
+several helpers are provided for typical tasks.
 
 ### Typing
 
@@ -756,7 +756,7 @@ development.
 VSCode Pylance requires this entry in `settings.json`:
 ```json
 "python.analysis.diagnosticSeverityOverrides": {
-	"reportInvalidTypeForm": "none"
+    "reportInvalidTypeForm": "none"
 }
 ```
 
@@ -771,23 +771,23 @@ necessary prefix for the created net names.
 
 ```python
 class MyComponent:
-	w1: Wire # self.w1 = wire("w1)
-	w2: Wire[32] # self.w2 = wire("w2", 32)
-	# Single tuples cannot be used in type annotation due to Python limitations. Use list to provide single range.
-	w3: Wire[[31, 16]] # self.w3 = wire("w3, [31, 16])
-	# Single tuple is interpreted as two values
-	w3_tuple: Wire[(31, 16)] # self.w3_tuple = wire("w3, 31, 16)
-	w4: Wire[4, [31, 16]] # self.w4 = wire("w4", 4, [31, 16])
-	r1: Reg[16].array(8) # self.r1 = reg("r1", 16).array(8)
-	r2: Reg[16].array(8, [15, 8]) # self.r1 = reg("r1", 16).array(8, [15, 8])
-	r3: Reg # Value assigned in constructor so it is untouched by `ConstructNets()`
+    w1: Wire # self.w1 = wire("w1)
+    w2: Wire[32] # self.w2 = wire("w2", 32)
+    # Single tuples cannot be used in type annotation due to Python limitations. Use list to provide single range.
+    w3: Wire[[31, 16]] # self.w3 = wire("w3, [31, 16])
+    # Single tuple is interpreted as two values
+    w3_tuple: Wire[(31, 16)] # self.w3_tuple = wire("w3, 31, 16)
+    w4: Wire[4, [31, 16]] # self.w4 = wire("w4", 4, [31, 16])
+    r1: Reg[16].array(8) # self.r1 = reg("r1", 16).array(8)
+    r2: Reg[16].array(8, [15, 8]) # self.r1 = reg("r1", 16).array(8, [15, 8])
+    r3: Reg # Value assigned in constructor so it is untouched by `ConstructNets()`
 
-	def __init__(self, size: int):
-		with namespace("MyComponent"):
-			# Dynamically sized so construct explicitly
-			self.r3 = reg("r3", size)
-			# Construct the rest
-			ConstructNets(self)
+    def __init__(self, size: int):
+        with namespace("MyComponent"):
+            # Dynamically sized so construct explicitly
+            self.r3 = reg("r3", size)
+            # Construct the rest
+            ConstructNets(self)
 ```
 
 ### Bus

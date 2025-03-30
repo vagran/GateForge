@@ -9,7 +9,7 @@ exclude = [
 
 [project]
 name = "gateforge"
-version = "0.0.1"
+version = "0.0.3"
 authors = [
   { name="Artyom Lebedev", email="artyom.lebedev@gmail.com" },
 ]
