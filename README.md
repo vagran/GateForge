@@ -20,7 +20,7 @@ of open-source hardware toolchains like Yosys, which lack support for SystemVeri
     - [Unpacked Arrays](#unpacked-arrays)
   - [Dimension Properties](#dimension-properties)
   - [Register Declarations](#register-declarations)
-  - [Key Features:](#key-features)
+  - [Key Features](#key-features)
 - [Bit Selection and Slicing](#bit-selection-and-slicing)
   - [Accessing Net Elements](#accessing-net-elements)
     - [Single-Bit Access](#single-bit-access)
@@ -32,7 +32,7 @@ of open-source hardware toolchains like Yosys, which lack support for SystemVeri
   - [Explicit Signal Naming](#explicit-signal-naming)
   - [Signal Directions](#signal-directions)
   - [Hierarchical Namespaces](#hierarchical-namespaces)
-    - [Namespace Features:](#namespace-features)
+    - [Namespace Features](#namespace-features)
 - [Assignments and Concatenation](#assignments-and-concatenation)
   - [Basic Assignments](#basic-assignments)
   - [Concatenation Operators](#concatenation-operators)
@@ -188,7 +188,8 @@ r1 = reg(8)        # Verilog: reg [7:0] r1
 r2 = reg([3,0], [7,4])      # Verilog: reg [3:0][7:4] r2
 ```
 
-### Key Features:
+### Key Features
+
 1. **Indexing Schemes**:
    - `wire(N)` creates 0-based big-endian vectors
    - `wire([high, low])` creates custom ranges
@@ -309,7 +310,8 @@ with namespace("PCIe"):
         valid = wire("DATA_VALID")
 ```
 
-#### Namespace Features:
+#### Namespace Features
+
 - Namespace prefixes are cumulative in nested contexts
 - Supports arbitrary depth of nesting
 - Affects all signal types (wires, registers, ports)
