@@ -1,4 +1,4 @@
-# GateForge: Python RTL Generation Framework
+# GateForge: Python RTL hardware design framework
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI - Version](https://img.shields.io/pypi/v/gateforge)](https://pypi.org/project/gateforge/)
@@ -7,7 +7,10 @@
 This is an open-source Python framework for designing Register-Transfer Level (RTL) hardware. It
 provides a domain-specific language (DSL) for creating hardware descriptions that compile to
 Verilog. The framework bridges the gap between high-level Python expressiveness and the constraints
-of open-source hardware toolchains like Yosys, which lack support for SystemVerilog.
+of open-source hardware toolchains like Yosys, which lack full support for SystemVerilog.
+
+It does not tend to introduce any new concepts, but mostly just wraps Verilog into Python DSL, so
+that you can use any Python features you want for metaprogramming over your synthesizable logic.
 
 ## Table of Contents
 - [Overview](#overview)
