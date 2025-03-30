@@ -19,7 +19,12 @@ class CompileResult:
     simulationModel: Optional[SimulationModel]
 
 
-def CompileModule(moduleFunc: Callable[[], Any], outputStream: TextIOBase, *,
+class NullOutput(io.StringIO):
+    def write(self, s, /):
+        pass
+
+
+def CompileModule(moduleFunc: Callable[[], Any], outputStream: TextIOBase = NullOutput(), *,
                   renderOptions: RenderOptions = RenderOptions(),
                   moduleName: Optional[str] = None,
                   moduleArgs: List[Any] = list(),
@@ -55,7 +60,7 @@ def CompileModule(moduleFunc: Callable[[], Any], outputStream: TextIOBase, *,
             if verilator is not None:
                 verilator.Build()
             return CompileResult(warnings=list(compileCtx.GetWarnings()), result=result,
-                                simulationModel=verilator.GetModel() if verilator is not None else None)
+                                 simulationModel=verilator.GetModel() if verilator is not None else None)
         finally:
             CompileCtx.Close()
 

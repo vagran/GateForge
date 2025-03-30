@@ -32,12 +32,13 @@
         {
             "label": "Run single unit test",
             "command": "${workspaceFolder}/.venv/bin/python",
-            "args": ["-m", "unittest", "test.test_concepts.TestConstructNets"],
+            "args": ["-m", "unittest", "test.test_verilator"],
             "options": {
                 "cwd": "${workspaceFolder}",
                 "env": {
                     "PYTHONPATH": "${workspaceFolder}/src",
-                    "PYTHONUNBUFFERED": "1"
+                    "PYTHONUNBUFFERED": "1",
+                    "PATH": "${config:env.ossCadSuiteDir}/bin:${env:PATH}"
                 }
             }
         },

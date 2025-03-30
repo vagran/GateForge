@@ -27,7 +27,8 @@
         "whenx",
         "whenz",
         "wireable",
-        "xnor"
+        "xnor",
+        "Yosys"
     ],
     "env": {
         "ossCadSuiteDir": "/opt/oss-cad-suite"
