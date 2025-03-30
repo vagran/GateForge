@@ -63,6 +63,16 @@
                     "PATH": "${config:env.ossCadSuiteDir}/bin:${env:PATH}"
                 }
             }
+        },
+        {
+            "label": "Build package",
+            "command": "${workspaceFolder}/.venv/bin/python",
+            "args": ["-m", "build"]
+        },
+        {
+            "label": "Upload package",
+            "type": "shell",
+            "command": "${workspaceFolder}/.venv/bin/python -m twine upload dist/*"
         }
     ]
 }

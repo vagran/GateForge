@@ -1,6 +1,8 @@
 # GateForge: Python RTL Generation Framework
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![PyPI - Version](https://img.shields.io/pypi/v/gateforge)](https://pypi.org/project/gateforge/)
+
 
 This is an open-source Python framework for designing Register-Transfer Level (RTL) hardware. It
 provides a domain-specific language (DSL) for creating hardware descriptions that compile to
