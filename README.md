@@ -10,7 +10,8 @@ Verilog. The framework bridges the gap between high-level Python expressiveness 
 of open-source hardware toolchains like Yosys, which lack full support for SystemVerilog.
 
 It does not tend to introduce any new concepts, but mostly just wraps Verilog into Python DSL, so
-that you can use any Python features you want for metaprogramming over your synthesizable logic.
+that you can use any Python features you want for metaprogramming over your synthesizable logic. If
+you are familiar with Verilog and Python, then you are mostly familiar with this framework.
 
 ## Table of Contents
 - [Overview](#overview)
