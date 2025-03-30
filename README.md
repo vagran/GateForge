@@ -859,4 +859,3 @@ For more advanced example see RISC-V core example implementation. TODO add link
 
 ## License
 Apache 2.0 - See [LICENSE](LICENSE) for details
-```
