@@ -112,7 +112,7 @@ from gateforge.verilator import VerilatorParams
 
 class TestXOR(unittest.TestCase):
     def setUp(self):
-        vp = VerilatorParams(build_dir="build")
+        vp = VerilatorParams(buildDir="build")
         self.sim = CompileModule(SampleModule, verilatorParams=vp).simulation_model
 
     def test_xor_behavior(self):
