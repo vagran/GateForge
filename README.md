@@ -148,7 +148,7 @@ w2 = wire(4)          # Verilog: wire [3:0] w2
 w3 = wire([7, 3])     # Verilog: wire [7:3] w3
 
 # Little-endian 5-bit wire
-w4 = wire([3, 7])     # Verilog: wire [7:3] w4
+w4 = wire([3, 7])     # Verilog: wire [3:7] w4
 ```
 
 #### Multi-dimensional Packed Arrays
@@ -167,8 +167,8 @@ Same dimensions specifying scheme applies to unpacked arrays.
 arr1 = wire(4).array(2)     # Verilog: wire [3:0] arr1[1:0]
 
 # 2D unpacked array with custom indices
-arr2 = wire(8).array([2, 6], [10, 15])
-# Verilog: wire [7:0] arr2[2:6][10:15]
+arr2 = wire(8).array([6, 2], [15, 10])
+# Verilog: wire [7:0] arr2[6:2][15:10]
 
 # Mixed packed/unpacked
 arr3 = wire([7,0], [3,0]).array(4)
@@ -264,7 +264,7 @@ wire8[3]      # Single bit
 # Invalid
 wire8[8]      # IndexError: Bit out of range
 wire8[3:7]    # ValueError: Reverse slice (MSB < LSB), mismatched endianness.
-wire8[myReg:1]  # ValueError: Non-literal slice indices
+wire8[myReg:1]  # ValueError: Non-constant slice indices
 ```
 
 ## Signal Naming and Direction
@@ -333,7 +333,13 @@ cs <<= w1  # Verilog: assign cs = w1;
 ```
 Remember that regular Python assignment just assigns a Python reference to the specified signal.
 
+This is alternative assignment syntax which might be useful in some cases:
+```python
+cs.assign(w1)
+```
+
 ### Concatenation Operators
+
 ```python
 # Basic concatenation
 w1 % w2 % w3[7:5]  # Verilog: {w1, w2, w3[7:5]}
@@ -354,6 +360,7 @@ result <<= concat(w1, w2, w3[7:5])
 ## Constants and Literals
 
 ### Constant Declaration Methods
+
 ```python
 # Verilog-style string declaration
 hex_const = const("5'ha")       # 5-bit hex: 5'h0a
@@ -365,7 +372,23 @@ dec_const = const(0xaa, 8)      # 8-bit 0xaa
 bool_const = const(True)
 ```
 
+In most places Python `int` and `bool` type values can be used as is, corresponding constant is
+inferred.
+```python
+cs <<= True
+address <<= 0x8000
+```
+
+When constant does not have size specified (either inferred from `int` or declared without size),
+its size is unbound, and implies some consequences, mostly the same as in Verilog in the same
+situation.
+```python
+unsized = const("'h800")
+otherUnsized = const(someIntValue)
+```
+
 ### Concatenation rules
+
 ```python
 w4 <<= 5 % w1     # Allowed: 3-bit + 1-bit = 4-bit
 w4 <<= w1 % 5     # Error: Right constant needs explicit width
@@ -375,8 +398,7 @@ w4 <<= w1 % const(5, 3)  # Valid: 1 + 3 = 4-bit
 ## Ternary Operator Implementation
 
 The framework provides two equivalent syntaxes for conditional assignments:
-```
-python
+```python
 # Functional style
 w1 <<= cond(condition, true_expr, false_expr)
 
@@ -395,7 +417,7 @@ w1 <<= condition.cond(true_expr, false_expr)
 with always(clk.posedge | rst.negedge):
     # Non-blocking assignment
     counter <<= next_counter
-    # Blocking assignment (within same block)
+    # Blocking assignment
     temp //= a + b
 ```
 
@@ -524,10 +546,6 @@ if (w1 < w2) == w3:  # Verilog: (w1 < w2) == w3
 | `a.sra(2)`             | `a >>> 2`                | Arithmetic right shift             |
 
 
-Here's the detailed documentation section for signed operations and custom function calls:
-
----
-
 ## Functions
 
 ### Signed Signal Handling
@@ -539,8 +557,8 @@ signed_wire = w1.signed  # Verilog: $signed(w1)
 
 ### Custom Function Calls
 ```python
-# Some function call which do not have pre-defined wrapper. Result dimensions should be specified
-# (omitting produces dimensionless result).
+# Some function call which do not have pre-defined wrapper. Result dimensions should be
+# specified (omitting produces dimensionless result).
 checksum <<= call("calc_crc32", data, Dimensions.Vector(32))
 ```
 
@@ -853,11 +871,18 @@ class SampleInterface(Interface["SampleInterface"]):
 In contrast with `Bus` it provides two properties - `.internal` and `.external` of type `Bus`, which
 represent internal and external port of the interface. The directions specified in the interface
 members declarations corresponds to internal port, i.e. looking towards a component implementation.
-External port is adjacent, and is looking towards the component externals.
+External port is adjacent, and is looking towards the component external periphery.
 
 It has the same creation and construction methods as `Bus`. Typically you want use `.Assign()`
 method of `.internal` and `.external` buses.
 
+```python
+self.memIface.internal.Assign(valid=self.memValid,
+                              insn=~self.insnFetched,
+                              address=self.memAddress,
+                              dataWrite=self.memWData,
+                              writeMask=self.memWriteMask)
+```
 
 ## Advanced example
 
