@@ -449,6 +449,8 @@ class Dimensions:
 
     # Size of bits vector (product of packed dimensions sizes)
     vectorSize: int = 1
+    # Size of array (product of unpacked dimensions sizes)
+    arraySize: int = 1
 
 
     def __init__(self, packedDims: Optional[Tuple[Tuple[int, int],...]],
@@ -460,6 +462,7 @@ class Dimensions:
         if unpackedDims is not None:
             Dimensions._ValidateDims(unpackedDims)
             self.unpacked = unpackedDims
+            self.arraySize = Dimensions._CalculateSize(unpackedDims)
 
 
     @property
